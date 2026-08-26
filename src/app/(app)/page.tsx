@@ -14,6 +14,7 @@ import { GoalCelebration } from "@/components/dashboard/goal-celebration";
 import { WaterCard } from "@/components/dashboard/water-card";
 import { RecentMealsStrip } from "@/components/dashboard/recent-meals-strip";
 import { WeeklyInsightsCard } from "@/components/dashboard/weekly-insights-card";
+import { Greeting } from "@/components/shared/greeting";
 import { TopBar } from "@/components/top-bar";
 import { DayEmptyState } from "@/components/meals/day-empty-state";
 import { MealPhoto } from "@/components/meals/meal-photo";
@@ -67,6 +68,7 @@ export default async function TodayPage({
     <>
       <TopBar>
         <DateNavigator dateISO={dateISO} todayISO={today} />
+        <Greeting />
       </TopBar>
 
       {dateISO !== today && (

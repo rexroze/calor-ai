@@ -77,16 +77,20 @@ const SYSTEM_PROMPT = [
 ].join("\n");
 
 /** Builds the v7 user message with text + JPEG file parts. */
-function buildMessages(base64Jpeg: string) {
+function buildMessages(base64Jpeg: string, note?: string) {
   const data = base64Jpeg.startsWith("data:")
     ? base64Jpeg.slice(base64Jpeg.indexOf(",") + 1)
     : base64Jpeg;
+
+  const text = note
+    ? `User context: ${note}\n\nAnalyze this meal photo.`
+    : "Analyze this meal photo.";
 
   return [
     {
       role: "user" as const,
       content: [
-        { type: "text" as const, text: "Analyze this meal photo." },
+        { type: "text" as const, text },
         {
           type: "file" as const,
           mediaType: "image/jpeg",
@@ -142,13 +146,13 @@ function normalizeAnalysis(analysis: FoodAnalysis): FoodAnalysis {
 }
 
 /** PRIMARY: strict json_schema structured outputs, deterministic latency. */
-async function structuredAttempt(base64Jpeg: string): Promise<FoodAnalysis> {
+async function structuredAttempt(base64Jpeg: string, note?: string): Promise<FoodAnalysis> {
   const { object } = await generateObject({
     model: groqModel(primaryModelId()),
     schema: foodAnalysisSchema,
     schemaName: "FoodAnalysis",
     instructions: SYSTEM_PROMPT,
-    messages: buildMessages(base64Jpeg),
+    messages: buildMessages(base64Jpeg, note),
     temperature: 0.2,
     maxOutputTokens: 700,
     abortSignal: AbortSignal.timeout(TIMEOUT_MS),
@@ -170,11 +174,11 @@ async function structuredAttempt(base64Jpeg: string): Promise<FoodAnalysis> {
  * outputs: JSON-in-text mode, validated with the same tolerant zod schema.
  * The system text mentions JSON (required by Groq's json_object mode).
  */
-async function jsonModeAttempt(base64Jpeg: string): Promise<FoodAnalysis> {
+async function jsonModeAttempt(base64Jpeg: string, note?: string): Promise<FoodAnalysis> {
   const { text } = await generateText({
     model: groqModel(fallbackModelId()),
     instructions: SYSTEM_PROMPT,
-    messages: buildMessages(base64Jpeg),
+    messages: buildMessages(base64Jpeg, note),
     temperature: 0.2,
     maxOutputTokens: 700,
     abortSignal: AbortSignal.timeout(TIMEOUT_MS),
@@ -224,9 +228,10 @@ function extractJsonCandidate(text: string): unknown {
  */
 export async function analyzeFoodPhoto(
   base64Jpeg: string,
+  note?: string,
 ): Promise<FoodAnalysis> {
   try {
-    return await structuredAttempt(base64Jpeg);
+    return await structuredAttempt(base64Jpeg, note);
   } catch (error) {
     if (isFatalProviderError(error)) {
       console.error(
@@ -242,7 +247,7 @@ export async function analyzeFoodPhoto(
   }
 
   try {
-    return await jsonModeAttempt(base64Jpeg);
+    return await jsonModeAttempt(base64Jpeg, note);
   } catch (error) {
     console.error(
       "[calorAI] json-mode attempt failed:",

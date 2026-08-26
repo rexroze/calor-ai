@@ -168,6 +168,10 @@
     @apply bg-background text-foreground;
     overscroll-behavior-y: none;
   }
+  /* Native-like touch behavior: prevent double-tap zoom on interactive elements */
+  button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
+  }
   ::selection {
     background: color-mix(in oklab, var(--primary) 30%, transparent);
   }

@@ -1,0 +1,11 @@
+-- Reset all calorAI tables (keeps schema, removes all data)
+TRUNCATE TABLE food_items CASCADE;
+TRUNCATE TABLE meals CASCADE;
+TRUNCATE TABLE water_logs CASCADE;
+TRUNCATE TABLE push_subscriptions CASCADE;
+TRUNCATE TABLE goals CASCADE;
+TRUNCATE TABLE profile CASCADE;
+TRUNCATE TABLE session CASCADE;
+TRUNCATE TABLE account CASCADE;
+TRUNCATE TABLE verification CASCADE;
+TRUNCATE TABLE "user" CASCADE;

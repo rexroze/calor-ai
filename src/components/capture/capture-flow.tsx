@@ -152,8 +152,9 @@ export function CaptureFlow() {
    */
   const analysisRunRef = useRef(0);
 
-  const [phase, setPhase] = useState<"pick" | "analyzing" | "review">("pick");
+  const [phase, setPhase] = useState<"pick" | "noting" | "analyzing" | "review">("pick");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [preNote, setPreNote] = useState("");
   const [analysisFailed, setAnalysisFailed] = useState(false);
   /** Last scan landed below LOW_CONFIDENCE_THRESHOLD — show the check banner. */
   const [lowConfidenceResult, setLowConfidenceResult] = useState(false);
@@ -176,7 +177,6 @@ export function CaptureFlow() {
     // Claim this run; a later cancel bumps the counter and invalidates it.
     const runId = ++analysisRunRef.current;
 
-    setPhase("analyzing");
     let prepared: PreparedAnalysisImage;
     try {
       prepared = await prepareAnalysisImage(file);
@@ -192,11 +192,20 @@ export function CaptureFlow() {
     // original encoding (Safari renders HEIC; other browsers just show the
     // dim overlay until review).
     setPhotoPreview(prepared.dataUrl);
+    setPreNote("");
+    setPhase("noting");
+  }
+
+  async function startAnalysis(note: string) {
+    // Claim this run; a later cancel bumps the counter and invalidates it.
+    const runId = ++analysisRunRef.current;
+
+    setPhase("analyzing");
 
     try {
       // Data URL (not bare base64) so the accurate sniffed media type
       // reaches the server; prefix-stripping servers are unaffected.
-      const analysis = await analyzePhoto(prepared.dataUrl);
+      const analysis = await analyzePhoto(photoPreview!, note || undefined);
       if (analysisRunRef.current !== runId) return; // cancelled — discard
       setDrafts(analysis.items.map(draftFromAnalysis));
       setAnalysisFailed(false);
@@ -281,6 +290,7 @@ export function CaptureFlow() {
   function resetToPick() {
     setPhase("pick");
     setPhotoPreview(null);
+    setPreNote("");
     setAnalysisFailed(false);
     setLowConfidenceResult(false);
     setDrafts([emptyDraftItem()]);
@@ -329,6 +339,64 @@ export function CaptureFlow() {
             onCamera={() => cameraInputRef.current?.click()}
             onGallery={() => galleryInputRef.current?.click()}
           />
+        )}
+
+        {phase === "noting" && (
+          <section aria-label="Add a note before analysis" className="reveal space-y-5 rounded-3xl border bg-card p-6">
+            <div className="flex items-center gap-3">
+              {photoPreview && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={photoPreview}
+                  alt="Your meal photo"
+                  className="size-14 shrink-0 rounded-xl object-cover ring-1 ring-border"
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <h2 className="font-display text-lg font-semibold tracking-tight">
+                  Any context for the AI?
+                </h2>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Help the model identify your meal more accurately.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="capture-pre-note">Note</Label>
+              <Input
+                id="capture-pre-note"
+                value={preNote}
+                onChange={(event) => setPreNote(event.target.value)}
+                placeholder="Optional: restaurant name, cooking method, hidden ingredients..."
+                autoComplete="off"
+                maxLength={280}
+                autoFocus
+                className="bg-card"
+              />
+            </div>
+
+            <div className="space-y-2.5">
+              <Button
+                type="button"
+                size="lg"
+                className="h-11 w-full text-base"
+                onClick={() => startAnalysis(preNote)}
+              >
+                <FlameIcon aria-hidden="true" />
+                Analyze
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-11 w-full text-base"
+                onClick={() => startAnalysis("")}
+              >
+                Skip
+              </Button>
+            </div>
+          </section>
         )}
 
         {phase === "analyzing" && (

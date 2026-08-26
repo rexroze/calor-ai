@@ -118,7 +118,7 @@ export function AuthForm({
                 id="auth-name"
                 type="text"
                 autoComplete="name"
-                placeholder="Rex"
+                placeholder="Your name"
                 value={name}
                 onChange={(event) => {
                   setName(event.target.value);

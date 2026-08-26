@@ -5,6 +5,7 @@ import { TopBar } from "@/components/top-bar";
 import { AccountCard } from "@/components/settings/account-card";
 import { AppearanceCard } from "@/components/settings/appearance-card";
 import { GoalsForm } from "@/components/settings/goals-form";
+import { PersonalInfoCard } from "@/components/settings/personal-info-card";
 import { RemindersCard } from "@/components/settings/reminders-card";
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
 
       <main className="mx-auto w-full max-w-md space-y-4 px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+6.5rem)]">
         <AppearanceCard />
+        <PersonalInfoCard />
         <GoalsForm initialGoals={goals} />
         <hr className="border-border/60" />
         <RemindersCard />

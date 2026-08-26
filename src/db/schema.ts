@@ -90,6 +90,22 @@ export const goals = pgTable("goals", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const profile = pgTable("profile", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  sex: text("sex"), // "male" | "female" | null
+  age: integer("age"),
+  heightCm: real("height_cm"),
+  weightKg: real("weight_kg"),
+  activityLevel: text("activity_level"), // "sedentary" | "light" | "moderate" | "active"
+  goalIntent: text("goal_intent"), // "lose" | "maintain" | "gain"
+  unitPreference: text("unit_preference").notNull().default("metric"), // "metric" | "imperial"
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 /**
  * One row per water log delta. `amountMl` may be negative (undo taps);
  * consumers sum per (user, local day). `dateISO` is the app-wide plain

@@ -148,10 +148,10 @@ export async function getDay(dateISO: string): Promise<DaySummary> {
 }
 
 /** Analyze a base64 JPEG photo with the Groq vision model. */
-export async function analyzePhoto(base64Jpeg: string): Promise<FoodAnalysis> {
+export async function analyzePhoto(base64Jpeg: string, note?: string): Promise<FoodAnalysis> {
   await requireUserId();
   const parsed = foodAnalysisSchema.safeParse(
-    await analyzeFoodPhoto(base64Jpeg),
+    await analyzeFoodPhoto(base64Jpeg, note),
   );
   if (!parsed.success) {
     throw new Error("AI_ANALYSIS_FAILED");

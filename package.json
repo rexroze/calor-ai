@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "db:reset": "echo 'Run this SQL against your Neon DB: scripts/db-reset.sql'"
   },
   "dependencies": {
     "@ai-sdk/groq": "^4.0.31",

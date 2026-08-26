@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { saveGoals } from "@/app/actions/goals";
+import { saveProfile, type ProfileData } from "@/app/actions/profile";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,9 @@ import {
 } from "@/lib/targets";
 import { cn } from "@/lib/utils";
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
+
+const STEP_LABELS = ["About you", "About you", "Body stats", "Your goal"];
 
 const ACTIVITY_OPTIONS: Array<{
   value: ActivityLevel;
@@ -64,9 +67,13 @@ function clampRound(value: string, max: number): number | null {
 }
 
 /**
- * Post-signup wizard: three steps (welcome → about you → goal), each with a
- * persistent skip path. The plan panel on step 3 is prefilled by
- * computeTargets and stays fully editable before saving.
+ * Post-signup wizard: four steps
+ *   0 – Welcome
+ *   1 – Sex + Age
+ *   2 – Height + Weight + Activity level
+ *   3 – Goal intent + editable plan
+ *
+ * Profile data is persisted on completion alongside the macro goals.
  */
 export function OnboardingWizard({ displayName }: { displayName: string }) {
   const router = useRouter();
@@ -131,12 +138,21 @@ export function OnboardingWizard({ displayName }: { displayName: string }) {
     setError(null);
 
     if (step === 1) {
-      if (sex === null || activity === null) {
-        setError("Pick an option for each question to continue.");
+      // Step 1: Sex + Age only
+      if (sex === null) {
+        setError("Pick your sex to continue.");
         return;
       }
       if (!Number.isInteger(ageNum) || ageNum < 13 || ageNum > 99) {
         setError("Age must be a whole number between 13 and 99.");
+        return;
+      }
+    }
+
+    if (step === 2) {
+      // Step 2: Height + Weight + Activity
+      if (activity === null) {
+        setError("Pick an activity level to continue.");
         return;
       }
       if (!Number.isFinite(heightNum) || heightNum < 100 || heightNum > 250) {
@@ -173,6 +189,18 @@ export function OnboardingWizard({ displayName }: { displayName: string }) {
 
     setSaving(true);
     try {
+      // Persist profile data alongside macro goals.
+      const profileData: ProfileData = {
+        sex: sex ?? null,
+        age: ageNum || null,
+        heightCm: heightNum || null,
+        weightKg: weightNum || null,
+        activityLevel: activity ?? null,
+        goalIntent: intent,
+        unitPreference: "metric",
+      };
+      await saveProfile(profileData);
+
       await saveGoals({ calories, proteinG, carbsG, fatG });
       toast.success("You're all set");
       router.replace("/");
@@ -186,26 +214,36 @@ export function OnboardingWizard({ displayName }: { displayName: string }) {
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-5">
-      {/* Progress dots */}
-      <div
-        className="flex items-center gap-2"
-        role="group"
-        aria-label={`Step ${step + 1} of ${TOTAL_STEPS}`}
-      >
-        {Array.from({ length: TOTAL_STEPS }, (_, index) => (
-          <span
-            key={index}
-            aria-hidden="true"
-            className={cn(
-              "h-2 rounded-full transition-all duration-300",
-              index === step
-                ? "w-6 bg-primary"
-                : index < step
-                  ? "w-2 bg-primary/40"
-                  : "w-2 bg-border",
-            )}
-          />
-        ))}
+      {/* Progress indicator */}
+      <div className="flex flex-col items-center gap-2">
+        <span className="text-xs text-muted-foreground">
+          Step {step + 1} of {TOTAL_STEPS}
+        </span>
+        <div
+          className="flex items-center gap-2"
+          role="group"
+          aria-label={`Step ${step + 1} of ${TOTAL_STEPS}`}
+        >
+          {Array.from({ length: TOTAL_STEPS }, (_, index) => (
+            <span
+              key={index}
+              aria-hidden="true"
+              className={cn(
+                "h-2 rounded-full transition-all duration-300",
+                index === step
+                  ? "w-6 bg-primary"
+                  : index < step
+                    ? "w-2 bg-primary/40"
+                    : "w-2 bg-border",
+              )}
+            />
+          ))}
+        </div>
+        {step > 0 && step < TOTAL_STEPS && (
+          <span className="text-xs text-muted-foreground">
+            {STEP_LABELS[step]}
+          </span>
+        )}
       </div>
 
       <Card className="reveal w-full gap-6 rounded-3xl border bg-card py-8">
@@ -225,7 +263,7 @@ export function OnboardingWizard({ displayName }: { displayName: string }) {
 
             {step === 1 && (
               <form onSubmit={handleAdvance}>
-                <StepAboutYou
+                <StepSexAge
                   sex={sex}
                   onSexChange={(next) => {
                     setSex(next);
@@ -233,6 +271,20 @@ export function OnboardingWizard({ displayName }: { displayName: string }) {
                   }}
                   age={age}
                   onAgeChange={setAge}
+                />
+                {error && <FormError message={error} />}
+                <WizardActions
+                  showBack
+                  continueLabel="Continue"
+                  onBack={() => setStep(0)}
+                  saving={saving}
+                />
+              </form>
+            )}
+
+            {step === 2 && (
+              <form onSubmit={handleAdvance}>
+                <StepBodyStats
                   heightCm={heightCm}
                   onHeightChange={setHeightCm}
                   weightKg={weightKg}
@@ -247,13 +299,13 @@ export function OnboardingWizard({ displayName }: { displayName: string }) {
                 <WizardActions
                   showBack
                   continueLabel="Continue"
-                  onBack={() => setStep(0)}
+                  onBack={() => setStep(1)}
                   saving={saving}
                 />
               </form>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -282,7 +334,7 @@ export function OnboardingWizard({ displayName }: { displayName: string }) {
                 <WizardActions
                   showBack
                   continueLabel="Start tracking"
-                  onBack={() => setStep(1)}
+                  onBack={() => setStep(2)}
                   saving={saving}
                 />
               </form>
@@ -319,28 +371,17 @@ function StepWelcome({ firstName }: { firstName: string }) {
   );
 }
 
-function StepAboutYou({
+/** Step 1: Sex + Age only. */
+function StepSexAge({
   sex,
   onSexChange,
   age,
   onAgeChange,
-  heightCm,
-  onHeightChange,
-  weightKg,
-  onWeightChange,
-  activity,
-  onActivityChange,
 }: {
   sex: Sex | null;
   onSexChange: (value: Sex) => void;
   age: string;
   onAgeChange: (value: string) => void;
-  heightCm: string;
-  onHeightChange: (value: string) => void;
-  weightKg: string;
-  onWeightChange: (value: string) => void;
-  activity: ActivityLevel | null;
-  onActivityChange: (value: ActivityLevel) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -371,6 +412,49 @@ function StepAboutYou({
         </div>
       </fieldset>
 
+      <div className="max-w-[8rem]">
+        <NumberField
+          id="onboarding-age"
+          label="Age"
+          unit="yrs"
+          value={age}
+          onChange={onAgeChange}
+          min={13}
+          max={99}
+          placeholder="28"
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Step 2: Height + Weight + Activity level. */
+function StepBodyStats({
+  heightCm,
+  onHeightChange,
+  weightKg,
+  onWeightChange,
+  activity,
+  onActivityChange,
+}: {
+  heightCm: string;
+  onHeightChange: (value: string) => void;
+  weightKg: string;
+  onWeightChange: (value: string) => void;
+  activity: ActivityLevel | null;
+  onActivityChange: (value: ActivityLevel) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <header className="space-y-1">
+        <h2 className="font-display text-xl font-semibold tracking-tight">
+          Body stats
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Used only to estimate your energy needs.
+        </p>
+      </header>
+
       <fieldset className="space-y-2">
         <legend className="pb-1 text-sm font-medium">Activity level</legend>
         <div className="grid grid-cols-2 gap-2.5">
@@ -387,17 +471,7 @@ function StepAboutYou({
         </div>
       </fieldset>
 
-      <div className="grid grid-cols-3 gap-2.5">
-        <NumberField
-          id="onboarding-age"
-          label="Age"
-          unit="yrs"
-          value={age}
-          onChange={onAgeChange}
-          min={13}
-          max={99}
-          placeholder="28"
-        />
+      <div className="grid grid-cols-2 gap-2.5">
         <NumberField
           id="onboarding-height"
           label="Height"
