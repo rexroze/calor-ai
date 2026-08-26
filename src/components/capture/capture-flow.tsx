@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -9,21 +9,25 @@ import {
   FlameIcon,
   ImagePlusIcon,
   LoaderCircleIcon,
+  PencilLineIcon,
   RotateCcwIcon,
+  TriangleAlertIcon,
+  XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { analyzePhoto, saveMeal } from "@/app/actions/meals";
+import { analyzePhoto, saveMeal, uploadMealPhoto } from "@/app/actions/meals";
+import { cacheMealPhoto } from "@/lib/photo-cache";
 import { describeActionError } from "@/components/shared/action-errors";
 import {
-  emptyDraftItem,
+  draftFromAnalysis,
   draftToFoodItemInput,
+  emptyDraftItem,
   isDraftMeaningful,
   type DraftItem,
 } from "@/components/shared/draft-items";
-import { base64FromDataUrl, downscaleToJpegDataUrl } from "@/components/capture/downscale-image";
-import { fmtNum } from "@/components/shared/format";
-import { usePrefersReducedMotion } from "@/components/shared/use-prefers-reduced-motion";
+import { prepareAnalysisImage, type PreparedAnalysisImage } from "@/components/capture/downscale-image";
+import { ScanOverlay } from "@/components/capture/scan-overlay";
 import { DraftTotals } from "@/components/meals/draft-totals";
 import { ReviewItemRows } from "@/components/meals/review-item-rows";
 import { Button } from "@/components/ui/button";
@@ -37,7 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { FoodAnalysisItem, MealType } from "@/lib/contracts";
+import type { MealType } from "@/lib/contracts";
 import {
   MEAL_TYPE_LABELS,
   MEAL_TYPE_ORDER,
@@ -45,23 +49,88 @@ import {
   isMealType,
 } from "@/components/shared/meal-types";
 
-/** Status copy under the scanner — one line every ~2.5s. */
-const PENDING_MESSAGES = [
-  "Reading your plate…",
-  "Spotting ingredients…",
-  "Estimating portions…",
-];
+/**
+ * Top-level dish confidence below this nudges the user to double-check the
+ * review list before logging ("pork scanned as duck" territory).
+ */
+const LOW_CONFIDENCE_THRESHOLD = 0.7;
 
-function analysisToDraft(item: FoodAnalysisItem): DraftItem {
-  return {
-    name: item.name,
-    portionDescription: item.portionDescription,
-    calories: String(Math.round(item.calories)),
-    proteinG: String(fmtNum(item.proteinG)),
-    carbsG: String(fmtNum(item.carbsG)),
-    fatG: String(fmtNum(item.fatG)),
-    confidence: item.confidence,
-  };
+// ---------------------------------------------------------------------------
+// Photo pipeline (save-time). The diary thumbnail is deliberately small:
+// longest edge 320px at JPEG q0.65 lands around 15–40KB, so the list stays
+// cheap on mobile data and the blob doubles as the offline cache entry.
+// ---------------------------------------------------------------------------
+
+const THUMB_MAX_EDGE = 320;
+const THUMB_JPEG_QUALITY = 0.65;
+
+/** Small JPEG blob from a preview data URL; null on any failure. */
+async function thumbnailBlobFromDataUrl(dataUrl: string): Promise<Blob | null> {
+  try {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("THUMB_DECODE_FAILED"));
+      img.src = dataUrl;
+    });
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
+    if (width < 1 || height < 1) return null;
+
+    const scale = Math.min(1, THUMB_MAX_EDGE / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", THUMB_JPEG_QUALITY);
+    });
+    return blob && blob.size > 0 ? blob : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Data URL → base64 payload for uploadMealPhoto. */
+function dataUrlToBase64(dataUrl: string): string {
+  const commaIndex = dataUrl.indexOf(",");
+  return commaIndex === -1 ? dataUrl : dataUrl.slice(commaIndex + 1);
+}
+
+/** Blob → raw base64 payload for uploadMealPhoto. */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(dataUrlToBase64(String(reader.result)));
+    reader.onerror = () => reject(new Error("THUMB_READ_FAILED"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Upload the meal's thumbnail and prime the local photo cache. Best-effort
+ * by design — without BLOB_READ_WRITE_TOKEN or on any network hiccup the
+ * meal simply stays photoless, exactly like before this existed.
+ */
+async function attachMealPhoto(
+  mealId: string,
+  previewDataUrl: string,
+): Promise<void> {
+  try {
+    const blob = await thumbnailBlobFromDataUrl(previewDataUrl);
+    if (!blob) return;
+
+    const { photoUrl } = await uploadMealPhoto(await blobToBase64(blob), mealId);
+    if (!photoUrl) return;
+
+    // Cache the same bytes we uploaded so the diary renders instantly.
+    await cacheMealPhoto(mealId, blob);
+  } catch {
+    // Graceful degradation — never surface a photo problem after a save.
+  }
 }
 
 /**
@@ -71,66 +140,94 @@ function analysisToDraft(item: FoodAnalysisItem): DraftItem {
 export function CaptureFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const reducedMotion = usePrefersReducedMotion();
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
+  /**
+   * Cancellation token for the in-flight analysis. Server actions can't be
+   * aborted through the Next.js boundary (no AbortSignal on the invocation),
+   * so cancelling bumps this counter: any result arriving from an earlier
+   * run is discarded before it can touch state.
+   */
+  const analysisRunRef = useRef(0);
+
   const [phase, setPhase] = useState<"pick" | "analyzing" | "review">("pick");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [analysisFailed, setAnalysisFailed] = useState(false);
+  /** Last scan landed below LOW_CONFIDENCE_THRESHOLD — show the check banner. */
+  const [lowConfidenceResult, setLowConfidenceResult] = useState(false);
+  const [lowConfidenceDismissed, setLowConfidenceDismissed] = useState(false);
+  /** Bumped to pop the first item's name into its inline editor. */
+  const [renameFocusSignal, setRenameFocusSignal] = useState(0);
   const [drafts, setDrafts] = useState<DraftItem[]>([emptyDraftItem()]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [messageIndex, setMessageIndex] = useState(0);
   const [mealType, setMealType] = useState<MealType>(() => {
     const requested = searchParams.get("type");
     return isMealType(requested) ? requested : inferMealType();
   });
-
-  // Cycle the status copy under the scanner. Reduced motion keeps a single
-  // steady line instead of a rotating one.
-  useEffect(() => {
-    if (phase !== "analyzing" || reducedMotion) return;
-    let i = 0;
-    const id = setInterval(() => {
-      i += 1;
-      setMessageIndex(i % PENDING_MESSAGES.length);
-    }, 2500);
-    return () => clearInterval(id);
-  }, [phase, reducedMotion]);
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || phase === "analyzing") return;
 
+    // Claim this run; a later cancel bumps the counter and invalidates it.
+    const runId = ++analysisRunRef.current;
+
     setPhase("analyzing");
-    let preview: string;
+    let prepared: PreparedAnalysisImage;
     try {
-      preview = await downscaleToJpegDataUrl(file);
+      prepared = await prepareAnalysisImage(file);
     } catch {
+      if (analysisRunRef.current !== runId) return; // cancelled while decoding
       toast.error("Couldn't read that photo. Try taking another one.");
       setPhase("pick");
       return;
     }
 
     // The photo goes up immediately so the scanner has something real to
-    // sweep over while the model works.
-    setPhotoPreview(preview);
+    // sweep over while the model works. Passthrough previews keep their
+    // original encoding (Safari renders HEIC; other browsers just show the
+    // dim overlay until review).
+    setPhotoPreview(prepared.dataUrl);
 
     try {
-      const analysis = await analyzePhoto(base64FromDataUrl(preview));
-      setDrafts(analysis.items.map(analysisToDraft));
+      // Data URL (not bare base64) so the accurate sniffed media type
+      // reaches the server; prefix-stripping servers are unaffected.
+      const analysis = await analyzePhoto(prepared.dataUrl);
+      if (analysisRunRef.current !== runId) return; // cancelled — discard
+      setDrafts(analysis.items.map(draftFromAnalysis));
       setAnalysisFailed(false);
+      // Banner state is per-scan: a fresh result re-arms it.
+      setLowConfidenceResult(
+        analysis.isFood &&
+          analysis.confidence < LOW_CONFIDENCE_THRESHOLD &&
+          analysis.items.length > 0,
+      );
+      setLowConfidenceDismissed(false);
     } catch (error) {
-      // The photo itself was fine if it downscaled — let the user log by hand
-      // instead of losing the moment to a flaky model call.
+      if (analysisRunRef.current !== runId) return; // cancelled — discard
+      // The photo itself was fine if it could be read at all — let the user
+      // log by hand instead of losing the moment to a flaky model call.
       setDrafts([emptyDraftItem()]);
       setAnalysisFailed(true);
+      setLowConfidenceResult(false);
       toast.error(describeActionError(error));
     }
     setPhase("review");
+  }
+
+  /**
+   * Optimistic cancellation: the server action keeps running to completion
+   * server-side (Next.js exposes no AbortSignal for action invocations),
+   * but its result is discarded when it arrives late, the pickers come
+   * back, and every analyzing timer dies with the ScanOverlay unmount.
+   */
+  function handleCancelAnalysis() {
+    analysisRunRef.current += 1;
+    resetToPick();
   }
 
   function updateDraft(index: number, patch: Partial<DraftItem>) {
@@ -143,6 +240,15 @@ export function CaptureFlow() {
     setDrafts((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function dismissLowConfidenceBanner() {
+    setLowConfidenceDismissed(true);
+  }
+
+  /** Banner pencil affordance: open the first item's name for editing. */
+  function focusFirstItemName() {
+    setRenameFocusSignal((signal) => signal + 1);
+  }
+
   async function handleSave() {
     const items = drafts.filter(isDraftMeaningful).map(draftToFoodItemInput);
     if (items.length === 0) {
@@ -152,11 +258,18 @@ export function CaptureFlow() {
 
     setSaving(true);
     try {
-      await saveMeal({
+      const { mealId } = await saveMeal({
         mealType,
         note: note.trim() || undefined,
         items,
       });
+
+      // Fire-and-forget: the meal is logged; the photo must never block or
+      // fail the save (no token / offline / upload error → photoless meal).
+      if (photoPreview) {
+        void attachMealPhoto(mealId, photoPreview);
+      }
+
       toast.success("Meal logged");
       router.replace("/");
     } catch (error) {
@@ -169,6 +282,7 @@ export function CaptureFlow() {
     setPhase("pick");
     setPhotoPreview(null);
     setAnalysisFailed(false);
+    setLowConfidenceResult(false);
     setDrafts([emptyDraftItem()]);
   }
 
@@ -197,7 +311,18 @@ export function CaptureFlow() {
         tabIndex={-1}
       />
 
-      <main className="mx-auto w-full max-w-md px-4 pt-safe pb-52" aria-busy={busy}>
+      {/* While analyzing the stage fills the viewport between the sticky
+          top bar (pt-safe + min-h-14) and the fixed Cancel control below,
+          so the scanner sits vertically centered on any phone height.
+          Other phases keep their original flow. */}
+      <main
+        aria-busy={busy}
+        className={
+          phase === "analyzing"
+            ? "mx-auto flex min-h-[calc(100dvh-env(safe-area-inset-top)-3.5rem)] w-full max-w-md flex-col items-center justify-center px-4 pb-[calc(env(safe-area-inset-bottom)+6rem)] py-4"
+            : "mx-auto w-full max-w-md px-4 pt-safe pb-52"
+        }
+      >
         {phase === "pick" && (
           <PickCard
             disabled={busy}
@@ -207,19 +332,8 @@ export function CaptureFlow() {
         )}
 
         {phase === "analyzing" && (
-          <section aria-label="Analyzing your photo" className="reveal space-y-5">
-            <ScannerFrame preview={photoPreview} reducedMotion={reducedMotion} />
-            <div role="status" aria-live="polite" className="min-h-12 space-y-1 text-center">
-              <p
-                key={messageIndex}
-                className={`text-base font-medium ${reducedMotion ? "" : "animate-status-in"}`}
-              >
-                {PENDING_MESSAGES[messageIndex]}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Usually takes a couple of seconds.
-              </p>
-            </div>
+          <section aria-label="Analyzing your photo" className="reveal w-full space-y-5">
+            <ScanOverlay preview={photoPreview} />
           </section>
         )}
 
@@ -304,6 +418,44 @@ export function CaptureFlow() {
               </div>
             </div>
 
+            {lowConfidenceResult && !lowConfidenceDismissed && (
+              <div
+                role="status"
+                className="reveal flex items-center gap-1.5 rounded-xl border border-carbs/30 bg-carbs/10 py-2 pr-1.5 pl-3"
+                style={{ animationDelay: "90ms" }}
+              >
+                <TriangleAlertIcon
+                  className="size-4 shrink-0 text-carbs"
+                  aria-hidden="true"
+                />
+                <p className="min-w-0 flex-1 text-xs leading-relaxed">
+                  Not sure about this one — double-check the items below.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="size-9 shrink-0 text-carbs"
+                  aria-label="Check the first item's name"
+                  onClick={focusFirstItemName}
+                  disabled={saving}
+                >
+                  <PencilLineIcon aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="size-9 shrink-0 text-muted-foreground"
+                  aria-label="Dismiss this reminder"
+                  onClick={dismissLowConfidenceBanner}
+                  disabled={saving}
+                >
+                  <XIcon aria-hidden="true" />
+                </Button>
+              </div>
+            )}
+
             <section
               className="space-y-3 reveal"
               style={{ animationDelay: "120ms" }}
@@ -320,6 +472,7 @@ export function CaptureFlow() {
                   setDrafts((prev) => [...prev, emptyDraftItem()])
                 }
                 disabled={saving}
+                focusFirstNameSignal={renameFocusSignal}
               />
             </section>
 
@@ -335,6 +488,20 @@ export function CaptureFlow() {
           </div>
         )}
       </main>
+
+      {phase === "analyzing" && (
+        <footer className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="h-11 w-full bg-card/95 text-base backdrop-blur"
+            onClick={handleCancelAnalysis}
+          >
+            Cancel
+          </Button>
+        </footer>
+      )}
 
       {phase === "review" && (
         <footer className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
@@ -430,56 +597,5 @@ function PickCard({
         </p>
       </div>
     </section>
-  );
-}
-
-/**
- * Cal-AI-style scanning frame: the photo stays visible under a light dim,
- * a coral beam sweeps downward on loop, contained by the photo's radius.
- */
-function ScannerFrame({
-  preview,
-  reducedMotion,
-}: {
-  preview: string | null;
-  reducedMotion: boolean;
-}) {
-  return (
-    <div className="relative aspect-[4/3] overflow-hidden rounded-3xl ring-1 ring-border">
-      {preview ? (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={preview}
-          alt="Your meal photo being analyzed"
-          className="size-full object-cover"
-        />
-      ) : (
-        <div className="size-full bg-card" aria-hidden="true" />
-      )}
-
-      {/* Reading dim — keeps the food visible, mutes it for the beam. */}
-      <div aria-hidden="true" className="absolute inset-0 bg-black/45" />
-
-      {!reducedMotion && (
-        <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
-          <div
-            className="animate-scan-sweep absolute inset-x-0 top-0 h-[26%]"
-            style={{
-              background:
-                "linear-gradient(to bottom, transparent, color-mix(in oklab, var(--primary) 14%) 48%, color-mix(in oklab, var(--primary) 36%) 82%, var(--primary))",
-            }}
-          >
-            {/* Bright leading edge — crisp, never glowing. */}
-            <span
-              className="absolute inset-x-0 bottom-0 h-[2px]"
-              style={{
-                background:
-                  "color-mix(in oklab, var(--primary) 55%, white)",
-              }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
   );
 }

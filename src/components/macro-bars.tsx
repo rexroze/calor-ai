@@ -3,6 +3,7 @@
 import { BeefIcon, DropletIcon, WheatIcon } from "lucide-react";
 import type { MacroTotals } from "@/lib/contracts";
 import { useEnterProgress } from "@/components/shared/use-enter-progress";
+import { useGentle } from "@/components/shared/preferences";
 import { fmtNum } from "@/components/shared/format";
 import { cn } from "@/lib/utils";
 
@@ -77,8 +78,20 @@ function MacroBarRow({
   value: number;
   goal: number;
 }) {
-  const ratio = useEnterProgress(goal > 0 ? value / goal : 0);
+  // Exact fill = value/goal, clamped to [0, 1]. The clamp must happen on the
+  // raw number BEFORE it reaches CSS: a non-finite or >1 value would produce
+  // an invalid/auto inline width (a block child paints full-width), which is
+  // how a 87%-of-goal bar could ever render looking ~full.
+  const rawRatio = goal > 0 ? value / goal : 0;
+  const ratio = Number.isFinite(rawRatio)
+    ? Math.min(1, Math.max(0, rawRatio))
+    : 0;
+  const progress = useEnterProgress(ratio);
   const over = goal > 0 && value > goal;
+  // Gentle mode: bars + names stay; visible gram figures hide behind a
+  // width-stable placeholder. The progressbar's aria-label keeps the real
+  // numbers for screen readers.
+  const [gentle] = useGentle();
   const Icon = meta.icon;
 
   return (
@@ -100,11 +113,24 @@ function MacroBarRow({
           <span
             className={cn(
               "tnum shrink-0 text-xs font-medium",
+              // Neutral for every row; red only when the goal is exceeded (>100%).
               over ? "text-destructive" : "text-muted-foreground",
             )}
           >
-            {fmtNum(value)}
-            {goal > 0 ? ` / ${fmtNum(goal)} g` : " g"}
+            {gentle ? (
+              <>
+                <span aria-hidden="true">•••</span>
+                <span className="sr-only">
+                  {fmtNum(value)} of{" "}
+                  {goal > 0 ? `${fmtNum(goal)} grams` : "no goal set"}
+                </span>
+              </>
+            ) : (
+              <>
+                {fmtNum(value)}
+                {goal > 0 ? ` / ${fmtNum(goal)} g` : " g"}
+              </>
+            )}
           </span>
         </div>
         <div
@@ -118,7 +144,7 @@ function MacroBarRow({
           <div
             className={cn("h-full rounded-full", meta.barClass)}
             style={{
-              width: `${Math.min(100, Math.round(ratio * 100))}%`,
+              width: `${Math.round(progress * 100)}%`,
               transition:
                 "width 900ms cubic-bezier(0.22, 1, 0.36, 1)",
             }}

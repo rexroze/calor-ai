@@ -1,7 +1,7 @@
 "use server";
 
-import { put } from "@vercel/blob";
-import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import { del, put } from "@vercel/blob";
+import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { headers } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import {
   type DaySummary,
   type FoodAnalysis,
   type FoodItemEntry,
+  type FoodItemInput,
   type MealEntry,
   type MacroTotals,
   type SaveMealInput,
@@ -159,7 +160,8 @@ export async function analyzePhoto(base64Jpeg: string): Promise<FoodAnalysis> {
 }
 
 /**
- * Persist a meal photo to Vercel Blob and return its public URL.
+ * Persist a meal photo to Vercel Blob and attach it to the meal
+ * (`meals.photo_url`), returning the public URL.
  *
  * Never throws for storage problems: without BLOB_READ_WRITE_TOKEN (local dev)
  * this is a graceful no-op, and any upload failure degrades to a photoless
@@ -167,8 +169,17 @@ export async function analyzePhoto(base64Jpeg: string): Promise<FoodAnalysis> {
  */
 export async function uploadMealPhoto(
   base64Jpeg: string,
+  mealId: string,
 ): Promise<{ photoUrl: string | null }> {
   const userId = await requireUserId();
+
+  // Ownership first — never attach a photo to (or store blobs for) another
+  // user's meal id.
+  const [meal] = await db
+    .select({ id: meals.id })
+    .from(meals)
+    .where(and(eq(meals.id, mealId), eq(meals.userId, userId)));
+  if (!meal) return { photoUrl: null };
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return { photoUrl: null };
@@ -184,6 +195,10 @@ export async function uploadMealPhoto(
       access: "public",
       contentType: "image/jpeg",
     });
+    await db
+      .update(meals)
+      .set({ photoUrl: blob.url, updatedAt: new Date() })
+      .where(and(eq(meals.id, mealId), eq(meals.userId, userId)));
     return { photoUrl: blob.url };
   } catch (error) {
     console.error("[calorAI] meal photo upload failed:", error);
@@ -273,6 +288,12 @@ export async function updateMeal(input: UpdateMealInput): Promise<{ mealId: stri
 export async function deleteMeal(mealId: string): Promise<void> {
   const userId = await requireUserId();
 
+  // Capture the photo URL before the row (and its photo_url) is gone.
+  const [existing] = await db
+    .select({ photoUrl: meals.photoUrl })
+    .from(meals)
+    .where(and(eq(meals.id, mealId), eq(meals.userId, userId)));
+
   // food_items rows go away via ON DELETE CASCADE on meals.id.
   const deleted = await db
     .delete(meals)
@@ -280,4 +301,106 @@ export async function deleteMeal(mealId: string): Promise<void> {
     .returning({ id: meals.id });
 
   if (deleted.length === 0) throw new Error("MEAL_NOT_FOUND");
+
+  // Best-effort blob cleanup — a failed delete must never block removing the
+  // meal from the diary.
+  if (existing?.photoUrl && process.env.BLOB_READ_WRITE_TOKEN) {
+    try {
+      await del(existing.photoUrl);
+    } catch (error) {
+      console.error("[calorAI] meal photo blob delete failed:", error);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recent meals (dashboard re-log strip)
+// ---------------------------------------------------------------------------
+
+/**
+ * A deduplicated recent meal for the dashboard re-log strip. Type-only
+ * export — erased at runtime, so it respects the "use server"
+ * async-functions-only rule.
+ */
+export type RecentMeal = {
+  id: string;
+  /** Display name: the first item's original-cased name. */
+  name: string;
+  mealType: MealEntry["mealType"];
+  photoUrl: string | null;
+  /** Items in SaveMealInput shape (no ids) — ready to clone-log as-is. */
+  items: FoodItemInput[];
+  totalKcal: number;
+};
+
+/**
+ * Distinct recently-logged meals, most recent first, for one-tap re-logging.
+ *
+ * Dedupe rule: signature = `${first item's name trimmed + lowercased}#${total
+ * kcal bucketed to the nearest 100}` — e.g. "chicken salad#4". The first
+ * occurrence wins (i.e. the newest instance of a repeated dish); later meals
+ * with the same signature are skipped.
+ *
+ * Fetches the last 40 meals (bounded query) plus their items, then dedupes
+ * in memory — same two-query shape as getDay() (neon-http, no transactions).
+ */
+export async function getRecentMeals(limit = 6): Promise<RecentMeal[]> {
+  const userId = await requireUserId();
+
+  const recentMeals = await db
+    .select()
+    .from(meals)
+    .where(eq(meals.userId, userId))
+    .orderBy(desc(meals.eatenAt))
+    .limit(40);
+
+  if (recentMeals.length === 0) return [];
+
+  const itemsByMealId = new Map<string, FoodItemEntry[]>();
+  const items = await db
+    .select()
+    .from(foodItems)
+    .where(inArray(foodItems.mealId, recentMeals.map((meal) => meal.id)))
+    .orderBy(asc(foodItems.id));
+  for (const item of items) {
+    const list = itemsByMealId.get(item.mealId) ?? [];
+    list.push(item);
+    itemsByMealId.set(item.mealId, list);
+  }
+
+  const seen = new Set<string>();
+  const result: RecentMeal[] = [];
+  for (const meal of recentMeals) {
+    if (result.length >= limit) break;
+
+    const mealItems = itemsByMealId.get(meal.id);
+    if (!mealItems || mealItems.length === 0) continue;
+
+    const totalKcal = Math.round(
+      mealItems.reduce((sum, item) => sum + item.calories, 0),
+    );
+    const firstName = mealItems[0].name.trim().toLowerCase();
+    const kcalBucket = Math.round(totalKcal / 100);
+    const signature = `${firstName}#${kcalBucket}`;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+
+    result.push({
+      id: meal.id,
+      name: mealItems[0].name,
+      mealType: meal.mealType as MealEntry["mealType"],
+      photoUrl: meal.photoUrl,
+      items: mealItems.map((item) => ({
+        name: item.name,
+        portionDescription: item.portionDescription,
+        calories: item.calories,
+        proteinG: item.proteinG,
+        carbsG: item.carbsG,
+        fatG: item.fatG,
+      })),
+      totalKcal,
+    });
+  }
+
+  return result;
 }

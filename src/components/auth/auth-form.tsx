@@ -35,6 +35,8 @@ export function AuthForm({
   const router = useRouter();
   const isSignIn = mode === "signin";
 
+  const [name, setName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -43,6 +45,12 @@ export function AuthForm({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
+
+    // Native `required` can't catch whitespace-only input, so validate here.
+    if (!isSignIn && name.trim().length === 0) {
+      setNameError("Please tell us your name.");
+      return;
+    }
 
     if (password.length < 8) {
       toast.error("Passwords are at least 8 characters.");
@@ -56,9 +64,9 @@ export function AuthForm({
         : await authClient.signUp.email({
             email,
             password,
-            // better-auth requires a display name; the email handle is a
-            // friendly default until profiles exist.
-            name: email.split("@")[0]?.slice(0, 64) || "Friend",
+            // better-auth requires a display name; the entered name is the
+            // real one, the email handle is a fallback until profiles exist.
+            name: name.trim().slice(0, 64) || "Friend",
           });
 
       if (result.error) {
@@ -72,7 +80,11 @@ export function AuthForm({
       }
 
       toast.success(isSignIn ? "Welcome back" : "Account created");
-      router.replace(safeNextPath(nextPath) ?? "/");
+      // New accounts land on the targets wizard; sign-ins (and any explicit
+      // ?next= return path) go straight to their destination.
+      router.replace(
+        safeNextPath(nextPath) ?? (isSignIn ? "/" : "/onboarding"),
+      );
       // Sync server-rendered session state behind the navigation.
       router.refresh();
     } catch {
@@ -85,7 +97,7 @@ export function AuthForm({
     <Card className="reveal w-full max-w-sm gap-6 rounded-3xl border bg-card py-8">
       <CardContent className="space-y-6 px-6">
         <div className="flex flex-col items-center gap-4 text-center">
-          <BrandMark size="lg" />
+          <BrandMark size="lg" orientation="stacked" />
           <div className="space-y-1">
             <h1 className="font-display text-xl font-semibold tracking-tight">
               {isSignIn ? "Welcome back" : "Create your account"}
@@ -99,6 +111,33 @@ export function AuthForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate={false}>
+          {!isSignIn && (
+            <div className="space-y-1.5">
+              <Label htmlFor="auth-name">Your name</Label>
+              <Input
+                id="auth-name"
+                type="text"
+                autoComplete="name"
+                placeholder="Rex"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  if (nameError) setNameError(null);
+                }}
+                required
+                aria-invalid={nameError ? true : undefined}
+                aria-describedby={nameError ? "auth-name-error" : undefined}
+                disabled={pending}
+                className="h-11"
+              />
+              {nameError && (
+                <p id="auth-name-error" className="text-xs text-destructive">
+                  {nameError}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="auth-email">Email</Label>
             <Input

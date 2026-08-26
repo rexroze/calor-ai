@@ -2,12 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOutIcon } from "lucide-react";
+import { LoaderCircleIcon, LogOutIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSession, authClient } from "@/lib/auth-client";
 import { describeActionError } from "@/components/shared/action-errors";
-import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Card,
   CardContent,
@@ -20,15 +29,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function AccountCard() {
   const router = useRouter();
   const { data: session, isPending, error } = useSession();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const email = session?.user?.email ?? null;
   const initial = email ? email[0].toUpperCase() : "?";
 
   async function handleSignOut() {
+    if (signingOut) return; // guard double-submit
     setSigningOut(true);
     try {
       await authClient.signOut();
+      toast.success("Signed out");
       router.replace("/signin");
       router.refresh();
     } catch {
@@ -72,18 +84,56 @@ export function AccountCard() {
           </div>
         </div>
 
-        <Button
+        <button
           type="button"
-          variant="outline"
-          size="lg"
-          className="h-10 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-          onClick={handleSignOut}
-          disabled={signingOut || isPending}
+          onClick={() => setConfirmOpen(true)}
+          disabled={isPending}
+          className="flex min-h-11 w-full items-center gap-2.5 rounded-xl bg-destructive/10 px-3.5 text-sm font-medium text-destructive transition-colors duration-150 hover:bg-destructive/15 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
         >
-          <LogOutIcon aria-hidden="true" />
-          {signingOut ? "Signing out…" : "Sign out"}
-        </Button>
+          <LogOutIcon className="size-4" aria-hidden="true" />
+          Sign out
+        </button>
       </CardContent>
+
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!signingOut) setConfirmOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign out of calorAI?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You&apos;ll need to sign in again to see your meals.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={signingOut}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={signingOut}
+              onClick={(event) => {
+                // Keep the dialog up while the request is in flight so the
+                // pending spinner stays visible; navigation closes it.
+                event.preventDefault();
+                void handleSignOut();
+              }}
+            >
+              {signingOut ? (
+                <>
+                  <LoaderCircleIcon className="animate-spin" aria-hidden="true" />
+                  Signing out…
+                </>
+              ) : (
+                "Sign out"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

@@ -20,12 +20,20 @@ const bricolage = Bricolage_Grotesque({
 });
 
 /**
- * Theme bootstrap — must run before first paint so the chosen appearance
- * (localStorage "calorai-theme": "dark" | "light" | "system") lands without
- * a flash. Dark is the default state of :root; `.light` on <html> flips it,
- * so we only ever ADD the light class when the resolved theme is light.
+ * Theme + preference bootstrap — must run before first paint so the chosen
+ * appearance (localStorage "calorai-theme": "dark" | "light" | "system")
+ * lands without a flash. Dark is the default state of :root; `.light` on
+ * <html> flips it, so we only ever ADD the light class when the resolved
+ * theme is light.
+ *
+ * User preferences piggyback on the same script (each guarded separately):
+ *   - localStorage "calorai-units": "metric" | "imperial"  -> data-units
+ *   - localStorage "calorai-gentle": "1" | "0"             -> data-gentle
+ * Absence of the attribute means the default (metric / gentle off), so we
+ * only ever SET attributes for non-default choices. Read back by the hooks
+ * in components/shared/preferences.tsx.
  */
-const THEME_INIT = `(function(){try{var t=localStorage.getItem("calorai-theme");var dark=t==="dark"||((!t||t==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(!dark){document.documentElement.classList.add("light")}}catch(e){}})();`;
+const THEME_INIT = `(function(){try{var t=localStorage.getItem("calorai-theme");var dark=t==="dark"||((!t||t==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(!dark){document.documentElement.classList.add("light")}}catch(e){}try{var u=localStorage.getItem("calorai-units");if(u==="imperial"){document.documentElement.dataset.units=u}}catch(e){}try{var g=localStorage.getItem("calorai-gentle");if(g==="1"){document.documentElement.dataset.gentle=g}}catch(e){}})();`;
 
 export const metadata: Metadata = {
   applicationName: "calorAI",

@@ -17,6 +17,15 @@ const DEFAULT_GOALS: Goals = {
   fatG: 65,
 };
 
+/** Daily water target fallback when the column is null/unset. */
+const DEFAULT_WATER_GOAL_ML = 2000;
+
+/**
+ * Goals plus the water target. Type-only export — erased at runtime, so it
+ * respects the "use server" async-functions-only rule.
+ */
+export type GoalsWithWater = Goals & { waterGoalMl: number };
+
 const goalsInputSchema = z.object({
   calories: z.number().int().min(0).max(20000),
   proteinG: z.number().int().min(0).max(2000),
@@ -33,7 +42,7 @@ async function requireUserId(): Promise<string> {
 }
 
 /** Returns the stored goals or sensible defaults — never creates a row. */
-export async function getGoals(): Promise<Goals> {
+export async function getGoals(): Promise<GoalsWithWater> {
   const userId = await requireUserId();
 
   const [row] = await db
@@ -42,11 +51,16 @@ export async function getGoals(): Promise<Goals> {
       proteinG: goals.proteinG,
       carbsG: goals.carbsG,
       fatG: goals.fatG,
+      waterGoalMl: goals.waterGoalMl,
     })
     .from(goals)
     .where(eq(goals.userId, userId));
 
-  return row ?? DEFAULT_GOALS;
+  // Pre-migration rows (and the defaults path) fall back to 2000 ml.
+  return {
+    ...(row ?? DEFAULT_GOALS),
+    waterGoalMl: row?.waterGoalMl ?? DEFAULT_WATER_GOAL_ML,
+  };
 }
 
 /** Upserts the user's daily macro goals. */

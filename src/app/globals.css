@@ -270,3 +270,151 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- Capture scanner: alternating sweep (additive) ---------- */
+
+/*
+ * Ping-pong sweep: the beam crosses downward leading with its bright edge,
+ * then flips (scaleY -1) so the upward pass leads with it too — one
+ * seamless loop, no visible turnaround. The flip lands at 50%/50.01% while
+ * the beam sits fully outside the frame (at -115% / 430% a beam sized 26%
+ * of the frame is entirely past either edge, clipped by overflow-hidden),
+ * so the gradient flip is never seen. ease-in-out applies per keyframe
+ * segment, softly easing each pass in and out at the turnarounds.
+ * Reduced motion falls back to the static dim via the component gate and
+ * the global reduce block above — same precedent as .animate-scan-sweep.
+ */
+@keyframes scan-sweep-down-up {
+  0% {
+    transform: translateY(-115%) scaleY(1);
+  }
+  50% {
+    transform: translateY(430%) scaleY(1);
+  }
+  50.01% {
+    transform: translateY(430%) scaleY(-1);
+  }
+  100% {
+    transform: translateY(-115%) scaleY(-1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* 3.2s round trip ≈ 1.6s per pass — close to the original 1.8s pace. */
+  .animate-scan-sweep-down-up {
+    animation: scan-sweep-down-up 3.2s ease-in-out infinite;
+  }
+}
+
+/* ---------- Goal celebration: once-a-day ring-close delight (additive) ---------- */
+
+/*
+ * Plays the day the consumed total first lands within goal
+ * (0 < consumed ≤ goal; over goal never celebrates). Two coordinated
+ * moments, both mounted only by GoalCelebration after its client-side
+ * trigger checks pass:
+ *   1. .animate-ring-glow — a ~1.6s warm pulse on the ring's progress
+ *      <circle>; pure drop-shadow keyframes, no layout impact.
+ *   2. .celebration-* — zero-dependency confetti: 12 palette-token sparks
+ *      plus one soft halo expanding from a zero-size anchor placed at the
+ *      exact center of the ring wrapper (left/top 50%).
+ * Everything below lives inside prefers-reduced-motion: no-preference — under
+ * "reduce" these classes don't exist, so no movement can come from here (the
+ * controller additionally skips mounting the overlay entirely).
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes ring-glow-pulse {
+    0%,
+    100% {
+      filter: drop-shadow(0 0 0 transparent);
+    }
+    35% {
+      filter:
+        drop-shadow(0 0 7px color-mix(in oklab, var(--primary) 60%, transparent))
+        drop-shadow(0 0 18px color-mix(in oklab, var(--primary) 26%, transparent));
+    }
+  }
+  .animate-ring-glow {
+    animation: ring-glow-pulse 1.6s ease-out both;
+  }
+
+  /* Zero-size anchor pinned to the visual center of the ring wrapper. */
+  .celebration-origin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+  }
+
+  @keyframes celebration-halo-pop {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.62);
+    }
+    22% {
+      opacity: 0.45;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(1.08);
+    }
+  }
+  .celebration-halo {
+    position: absolute;
+    left: 0;
+    top: 0;
+    box-sizing: border-box;
+    width: 264px;
+    height: 264px;
+    border: 2px solid color-mix(in oklab, var(--primary) 45%, transparent);
+    border-radius: 9999px;
+    animation: celebration-halo-pop 0.95s ease-out both;
+  }
+
+  /*
+   * Sparks fly along per-child --spark-angle / --spark-distance using CSS
+   * trig, staggered by animation-delay. Sizes, distances and directions are
+   * hand-jittered so the burst reads organic rather than mechanical; colors
+   * cycle the semantic palette (primary coral + protein/carbs/fat).
+   */
+  @keyframes celebration-spark-fly {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0) scale(0.4);
+    }
+    14% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform:
+        translate(
+          calc(cos(var(--spark-angle)) * var(--spark-distance)),
+          calc(sin(var(--spark-angle)) * var(--spark-distance))
+        )
+        scale(1);
+    }
+  }
+  .celebration-spark {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: -3px 0 0 -3px; /* rough-center small dots on the anchor point */
+    border-radius: 9999px;
+    animation: celebration-spark-fly 1.05s cubic-bezier(0.16, 0.84, 0.44, 1)
+      both;
+  }
+  .celebration-spark:nth-child(1) { width: 5px; height: 5px; --spark-angle: 8deg;   --spark-distance: 92px;  background: var(--primary); animation-delay: 0ms; }
+  .celebration-spark:nth-child(2) { width: 4px; height: 4px; --spark-angle: 37deg;  --spark-distance: 66px;  background: var(--protein); animation-delay: 60ms; }
+  .celebration-spark:nth-child(3) { width: 6px; height: 6px; --spark-angle: 64deg;  --spark-distance: 104px; background: var(--carbs);   animation-delay: 20ms; }
+  .celebration-spark:nth-child(4) { width: 4px; height: 4px; --spark-angle: 97deg;  --spark-distance: 72px;  background: var(--fat);     animation-delay: 90ms; }
+  .celebration-spark:nth-child(5) { width: 5px; height: 5px; --spark-angle: 126deg; --spark-distance: 98px;  background: var(--primary); animation-delay: 10ms; }
+  .celebration-spark:nth-child(6) { width: 3px; height: 3px; --spark-angle: 154deg; --spark-distance: 62px;  background: var(--protein); animation-delay: 70ms; }
+  .celebration-spark:nth-child(7) { width: 6px; height: 6px; --spark-angle: 189deg; --spark-distance: 106px; background: var(--carbs);   animation-delay: 30ms; }
+  .celebration-spark:nth-child(8) { width: 4px; height: 4px; --spark-angle: 216deg; --spark-distance: 74px;  background: var(--fat);     animation-delay: 100ms; }
+  .celebration-spark:nth-child(9) { width: 5px; height: 5px; --spark-angle: 245deg; --spark-distance: 96px;  background: var(--primary); animation-delay: 15ms; }
+  .celebration-spark:nth-child(10) { width: 4px; height: 4px; --spark-angle: 273deg; --spark-distance: 64px; background: var(--protein); animation-delay: 80ms; }
+  .celebration-spark:nth-child(11) { width: 6px; height: 6px; --spark-angle: 306deg; --spark-distance: 102px; background: var(--carbs);  animation-delay: 35ms; }
+  .celebration-spark:nth-child(12) { width: 4px; height: 4px; --spark-angle: 337deg; --spark-distance: 78px; background: var(--fat);     animation-delay: 110ms; }
+}

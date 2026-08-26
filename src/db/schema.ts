@@ -81,8 +81,37 @@ export const goals = pgTable("goals", {
   proteinG: integer("protein_g").notNull(),
   carbsG: integer("carbs_g").notNull(),
   fatG: integer("fat_g").notNull(),
+  /**
+   * Daily water target in milliliters. Nullable with a server-side default
+   * of 2000 so pre-existing rows backfill safely and readers can fall back
+   * to 2000 when the column is null.
+   */
+  waterGoalMl: integer("water_goal_ml").default(2000),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+/**
+ * One row per water log delta. `amountMl` may be negative (undo taps);
+ * consumers sum per (user, local day). `dateISO` is the app-wide plain
+ * 'YYYY-MM-DD' local-day key — never a timestamp.
+ */
+export const waterLogs = pgTable(
+  "water_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    dateISO: text("date_iso").notNull(),
+    amountMl: integer("amount_ml").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("water_logs_user_date_idx").on(table.userId, table.dateISO),
+  ],
+);
 
 export const meals = pgTable(
   "meals",
