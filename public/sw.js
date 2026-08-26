@@ -235,3 +235,66 @@ async function trimCache(cache, maxEntries) {
     await cache.delete(key);
   }
 }
+
+/* ------------------------------- push ------------------------------------ */
+
+/**
+ * Push notification handler. Shows ALL notifications (never silent) —
+ * iOS revokes subscriptions for silent pushes.
+ *
+ * Expected payload: { title: string, body: string, url?: string }
+ */
+self.addEventListener("push", (event) => {
+  let data = { title: "calorAI", body: "Time to log a meal!", url: "/" };
+
+  if (event.data) {
+    try {
+      data = { ...data, ...event.data.json() };
+    } catch {
+      // If the payload isn't JSON, use as plain text body.
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/badge-72.png",
+    data: { url: data.url || "/" },
+    // Ensure the notification is always shown (required for iOS PWA push).
+    silent: false,
+  };
+
+  event.waitUntil(self.registration.showNotification(data.title, options));
+});
+
+/* ----------------------------- notificationclick ------------------------- */
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const url = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    (async () => {
+      // Focus an existing client if one is open, otherwise open a new window.
+      const clients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+
+      for (const client of clients) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          // Navigate to the target URL, then focus.
+          if (client.url !== new URL(url, self.location.origin).href) {
+            client.navigate(url);
+          }
+          return client.focus();
+        }
+      }
+
+      // No existing client — open a new one.
+      return self.clients.openWindow(url);
+    })()
+  );
+});

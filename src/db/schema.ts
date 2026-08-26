@@ -151,3 +151,33 @@ export const foodItems = pgTable(
   },
   (table) => [index("food_items_meal_idx").on(table.mealId)],
 );
+
+// ---------------------------------------------------------------------------
+// Push subscription / reminder notification tables
+// ---------------------------------------------------------------------------
+
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** IANA timezone for the subscriber (e.g. "America/New_York"). */
+    tz: text("tz").notNull().default("UTC"),
+    remindersEnabled: boolean("reminders_enabled").notNull().default(true),
+    /**
+     * Deduplication key: `"YYYY-MM-DD:<meal>"`. Prevents double-sends when
+     * the cron fires more than once per local-hour window. Nullable so new
+     * subscriptions have never-sent state.
+     */
+    lastSentKey: text("last_sent_key"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("push_subscriptions_user_idx").on(table.userId)],
+);
