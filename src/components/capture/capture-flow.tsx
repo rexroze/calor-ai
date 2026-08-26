@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { analyzePhoto, saveMeal } from "@/app/actions/meals";
+import { analyzePhoto, saveMeal, uploadMealPhoto } from "@/app/actions/meals";
 import { describeActionError } from "@/components/shared/action-errors";
 import {
   emptyDraftItem,
@@ -147,9 +147,23 @@ export function CaptureFlow() {
 
     setSaving(true);
     try {
+      // Persist the analyzed photo first so saveMeal can store its URL in one
+      // write. Upload trouble must never block logging the meal — a null URL
+      // simply saves a photoless entry.
+      let photoUrl: string | undefined;
+      if (photoPreview) {
+        try {
+          const uploaded = await uploadMealPhoto(base64FromDataUrl(photoPreview));
+          photoUrl = uploaded.photoUrl ?? undefined;
+        } catch {
+          photoUrl = undefined;
+        }
+      }
+
       await saveMeal({
         mealType,
         note: note.trim() || undefined,
+        ...(photoUrl !== undefined ? { photoUrl } : {}),
         items,
       });
       toast.success("Meal logged");

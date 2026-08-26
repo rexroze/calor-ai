@@ -1,7 +1,9 @@
 "use server";
 
+import { put } from "@vercel/blob";
 import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import { headers } from "next/headers";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth";
@@ -154,6 +156,39 @@ export async function analyzePhoto(base64Jpeg: string): Promise<FoodAnalysis> {
     throw new Error("AI_ANALYSIS_FAILED");
   }
   return parsed.data;
+}
+
+/**
+ * Persist a meal photo to Vercel Blob and return its public URL.
+ *
+ * Never throws for storage problems: without BLOB_READ_WRITE_TOKEN (local dev)
+ * this is a graceful no-op, and any upload failure degrades to a photoless
+ * meal instead of blocking the log. Only an expired/missing session throws.
+ */
+export async function uploadMealPhoto(
+  base64Jpeg: string,
+): Promise<{ photoUrl: string | null }> {
+  const userId = await requireUserId();
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return { photoUrl: null };
+  }
+
+  try {
+    // The client sends raw base64; tolerate a stray data URL prefix anyway.
+    const raw = base64Jpeg.slice(base64Jpeg.indexOf(",") + 1);
+    const buffer = Buffer.from(raw, "base64");
+    if (buffer.length === 0) return { photoUrl: null };
+
+    const blob = await put(`meals/${userId}/${randomUUID()}.jpg`, buffer, {
+      access: "public",
+      contentType: "image/jpeg",
+    });
+    return { photoUrl: blob.url };
+  } catch (error) {
+    console.error("[calorAI] meal photo upload failed:", error);
+    return { photoUrl: null };
+  }
 }
 
 /**
