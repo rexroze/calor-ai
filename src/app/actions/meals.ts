@@ -1,9 +1,5 @@
 "use server";
 
-// Vision analysis can take several seconds on Groq's free tier; give the
-// serverless function enough headroom (default would be far tighter).
-export const maxDuration = 60;
-
 import { put } from "@vercel/blob";
 import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import { headers } from "next/headers";
