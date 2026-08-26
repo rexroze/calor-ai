@@ -78,6 +78,12 @@ async function structuredAttempt(
     messages: buildMessages(base64Jpeg),
     temperature: 0.2,
     maxOutputTokens: 2048,
+    // qwen3.6-27b is a thinking model; without this its reasoning consumes the
+    // whole completion budget and Groq returns an empty generation, failing
+    // server-side schema validation ("json_validate_failed").
+    providerOptions: {
+      groq: { reasoningEffort: "none" },
+    },
   });
   return object;
 }
@@ -102,6 +108,9 @@ async function jsonModeAttempt(
     messages: buildMessages(base64Jpeg),
     temperature: 0.2,
     maxOutputTokens: 2048,
+    providerOptions: {
+      groq: { reasoningEffort: "none" },
+    },
   });
 
   const parsed = extractAndParseJson(text);
@@ -125,6 +134,9 @@ async function repairAttempt(rawText: string): Promise<FoodAnalysis> {
     ].join("\n"),
     temperature: 0,
     maxOutputTokens: 2048,
+    providerOptions: {
+      groq: { reasoningEffort: "none" },
+    },
   });
 
   const parsed = extractAndParseJson(text);
@@ -164,9 +176,13 @@ export async function analyzeFoodPhoto(
 ): Promise<FoodAnalysis> {
   try {
     return await structuredAttempt(base64Jpeg);
-  } catch {
+  } catch (error) {
     // Structured outputs rejected by the model/provider — fall back to
     // JSON-in-text mode with one repair retry. Isolated to this module.
+    console.error(
+      "[calorAI] structured attempt failed:",
+      error instanceof Error ? error.message : error,
+    );
   }
 
   let rawText: string | null = null;
@@ -174,15 +190,21 @@ export async function analyzeFoodPhoto(
     const result = await jsonModeAttempt(base64Jpeg);
     if (result.analysis) return result.analysis;
     rawText = result.rawText;
-  } catch {
-    // fall through to repair/failure handling below
+  } catch (error) {
+    console.error(
+      "[calorAI] json-mode attempt failed:",
+      error instanceof Error ? error.message : error,
+    );
   }
 
   if (rawText) {
     try {
       return await repairAttempt(rawText);
-    } catch {
-      // fall through
+    } catch (error) {
+      console.error(
+        "[calorAI] repair attempt failed:",
+        error instanceof Error ? error.message : error,
+      );
     }
   }
 
