@@ -2,15 +2,22 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * Theme strategy: DARK is the default state of :root (near-black warm,
+ * food photos pop). An explicit `.light` class on <html> flips every token.
+ * The choice is resolved before paint by an inline script in layout.tsx
+ * (localStorage "calorai-theme": "dark" | "light" | "system").
+ * `dark:` utilities therefore mean "not light mode".
+ */
+@custom-variant dark (&:where(html:not(.light) *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-dm-sans);
   --font-mono: var(--font-mono);
-  --font-heading: var(--font-display);
-  --font-display: var(--font-display);
+  --font-heading: var(--font-bricolage);
+  --font-display: var(--font-bricolage);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -56,11 +63,55 @@
 }
 
 /*
- * calorAI palette — warm paper, deep cocoa ink, tangerine flame.
- * Macro colors are semantic and used identically everywhere:
+ * calorAI — dark first.
+ * Near-black warm surfaces keep photos luminous; one confident coral accent;
+ * macro colors stay semantic everywhere:
  *   protein = emerald, carbs = amber, fat = violet.
  */
 :root {
+  --background: oklch(0.148 0.007 45);
+  --foreground: oklch(0.935 0.006 80);
+  --card: oklch(0.182 0.008 48);
+  --card-foreground: oklch(0.935 0.006 80);
+  --popover: oklch(0.198 0.009 48);
+  --popover-foreground: oklch(0.935 0.006 80);
+  /* Coral accent, lifted for near-black surfaces. */
+  --primary: oklch(0.735 0.155 47);
+  --primary-foreground: oklch(0.17 0.03 40);
+  /* Accent TEXT on dark surfaces — links, active tabs. */
+  --terracotta: oklch(0.795 0.11 52);
+  --terracotta-foreground: oklch(0.17 0.03 42);
+  --secondary: oklch(0.246 0.012 50);
+  --secondary-foreground: oklch(0.905 0.008 76);
+  --muted: oklch(0.228 0.01 50);
+  --muted-foreground: oklch(0.66 0.012 62);
+  --accent: oklch(0.272 0.016 48);
+  --accent-foreground: oklch(0.94 0.008 78);
+  --destructive: oklch(0.67 0.185 25);
+  --border: oklch(1 0 0 / 8.5%);
+  --input: oklch(1 0 0 / 13%);
+  --ring: oklch(0.795 0.11 52);
+  --chart-1: oklch(0.735 0.155 47);
+  --chart-2: oklch(0.74 0.14 160);
+  --chart-3: oklch(0.81 0.125 82);
+  --chart-4: oklch(0.71 0.155 302);
+  --chart-5: oklch(0.68 0.015 60);
+  --protein: oklch(0.74 0.14 160);
+  --carbs: oklch(0.81 0.125 82);
+  --fat: oklch(0.71 0.155 302);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.165 0.008 46);
+  --sidebar-foreground: oklch(0.935 0.006 80);
+  --sidebar-primary: oklch(0.735 0.155 47);
+  --sidebar-primary-foreground: oklch(0.17 0.03 40);
+  --sidebar-accent: oklch(0.246 0.012 50);
+  --sidebar-accent-foreground: oklch(0.905 0.008 76);
+  --sidebar-border: oklch(1 0 0 / 8.5%);
+  --sidebar-ring: oklch(0.795 0.11 52);
+}
+
+/* Explicit light choice — fully polished, never an afterthought. */
+.light {
   --background: oklch(0.984 0.007 84);
   --foreground: oklch(0.25 0.02 45);
   --card: oklch(1 0 0);
@@ -70,7 +121,7 @@
   /* Juicy tangerine fill; deep cocoa text sits on top of it (AA-strong pair). */
   --primary: oklch(0.7 0.16 42);
   --primary-foreground: oklch(0.24 0.04 40);
-  /* Deeper shade reserved for accent TEXT on light surfaces (links, active tabs). */
+  /* Deeper shade reserved for accent TEXT on light surfaces. */
   --terracotta: oklch(0.52 0.155 35);
   --terracotta-foreground: oklch(0.985 0.012 80);
   --secondary: oklch(0.955 0.02 70);
@@ -91,7 +142,6 @@
   --protein: oklch(0.6 0.13 158);
   --carbs: oklch(0.7 0.13 75);
   --fat: oklch(0.55 0.18 300);
-  --radius: 0.75rem;
   --sidebar: oklch(0.985 0.007 84);
   --sidebar-foreground: oklch(0.25 0.02 45);
   --sidebar-primary: oklch(0.7 0.16 42);
@@ -102,87 +152,6 @@
   --sidebar-ring: oklch(0.52 0.155 35);
 }
 
-.dark {
-  --background: oklch(0.168 0.012 50);
-  --foreground: oklch(0.935 0.01 75);
-  --card: oklch(0.212 0.013 50);
-  --card-foreground: oklch(0.935 0.01 75);
-  --popover: oklch(0.225 0.014 50);
-  --popover-foreground: oklch(0.935 0.01 75);
-  --primary: oklch(0.72 0.155 44);
-  --primary-foreground: oklch(0.2 0.03 40);
-  --terracotta: oklch(0.75 0.14 45);
-  --terracotta-foreground: oklch(0.2 0.03 40);
-  --secondary: oklch(0.27 0.016 48);
-  --secondary-foreground: oklch(0.92 0.012 75);
-  --muted: oklch(0.26 0.015 48);
-  --muted-foreground: oklch(0.68 0.015 60);
-  --accent: oklch(0.29 0.025 45);
-  --accent-foreground: oklch(0.95 0.015 75);
-  --destructive: oklch(0.68 0.19 25);
-  --border: oklch(1 0 0 / 11%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.75 0.14 45);
-  --chart-1: oklch(0.72 0.155 44);
-  --chart-2: oklch(0.72 0.14 160);
-  --chart-3: oklch(0.8 0.135 80);
-  --chart-4: oklch(0.68 0.16 300);
-  --chart-5: oklch(0.68 0.015 60);
-  --protein: oklch(0.72 0.14 160);
-  --carbs: oklch(0.8 0.135 80);
-  --fat: oklch(0.68 0.16 300);
-  --sidebar: oklch(0.212 0.013 50);
-  --sidebar-foreground: oklch(0.935 0.01 75);
-  --sidebar-primary: oklch(0.72 0.155 44);
-  --sidebar-primary-foreground: oklch(0.2 0.03 40);
-  --sidebar-accent: oklch(0.27 0.016 48);
-  --sidebar-accent-foreground: oklch(0.92 0.012 75);
-  --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.75 0.14 45);
-}
-
-/* Class-less dark mode: honor the OS preference unless explicitly overridden. */
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    --background: oklch(0.168 0.012 50);
-    --foreground: oklch(0.935 0.01 75);
-    --card: oklch(0.212 0.013 50);
-    --card-foreground: oklch(0.935 0.01 75);
-    --popover: oklch(0.225 0.014 50);
-    --popover-foreground: oklch(0.935 0.01 75);
-    --primary: oklch(0.72 0.155 44);
-    --primary-foreground: oklch(0.2 0.03 40);
-    --terracotta: oklch(0.75 0.14 45);
-    --terracotta-foreground: oklch(0.2 0.03 40);
-    --secondary: oklch(0.27 0.016 48);
-    --secondary-foreground: oklch(0.92 0.012 75);
-    --muted: oklch(0.26 0.015 48);
-    --muted-foreground: oklch(0.68 0.015 60);
-    --accent: oklch(0.29 0.025 45);
-    --accent-foreground: oklch(0.95 0.015 75);
-    --destructive: oklch(0.68 0.19 25);
-    --border: oklch(1 0 0 / 11%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.75 0.14 45);
-    --chart-1: oklch(0.72 0.155 44);
-    --chart-2: oklch(0.72 0.14 160);
-    --chart-3: oklch(0.8 0.135 80);
-    --chart-4: oklch(0.68 0.16 300);
-    --chart-5: oklch(0.68 0.015 60);
-    --protein: oklch(0.72 0.14 160);
-    --carbs: oklch(0.8 0.135 80);
-    --fat: oklch(0.68 0.16 300);
-    --sidebar: oklch(0.212 0.013 50);
-    --sidebar-foreground: oklch(0.935 0.01 75);
-    --sidebar-primary: oklch(0.72 0.155 44);
-    --sidebar-primary-foreground: oklch(0.2 0.03 40);
-    --sidebar-accent: oklch(0.27 0.016 48);
-    --sidebar-accent-foreground: oklch(0.92 0.012 75);
-    --sidebar-border: oklch(1 0 0 / 11%);
-    --sidebar-ring: oklch(0.75 0.14 45);
-  }
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -190,6 +159,10 @@
   html {
     @apply font-sans;
     -webkit-tap-highlight-color: transparent;
+    color-scheme: dark;
+  }
+  html.light {
+    color-scheme: light;
   }
   body {
     @apply bg-background text-foreground;
@@ -202,7 +175,10 @@
 
 /* ---------- Typography helpers ---------- */
 
-/* Numerals: aligned columns, confident and tight. Pair with tracking classes. */
+/*
+ * Numerals: tabular figures so counters, totals and macro columns align.
+ * DM Sans carries tnum; Bricolage (display) is used for the big moments.
+ */
 @utility tnum {
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
@@ -218,16 +194,21 @@
 }
 
 /* ---------- Desktop page backdrop ---------- */
-/* Soft warm light wash behind the phone-width app column. */
+/* A whisper of neutral depth behind the phone-width column — no color glow,
+   just faint light above and a soft floor shade below, in both themes. */
 .app-backdrop {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(42rem 30rem at 8% -10%, color-mix(in oklab, var(--primary) 16%, transparent), transparent 62%),
-    radial-gradient(36rem 26rem at 105% 18%, color-mix(in oklab, var(--carbs) 13%, transparent), transparent 58%),
-    radial-gradient(34rem 34rem at 50% 118%, color-mix(in oklab, var(--protein) 10%, transparent), transparent 60%);
+    linear-gradient(to bottom, rgb(255 255 255 / 0.03), transparent 30%),
+    radial-gradient(44rem 30rem at 50% 116%, rgb(0 0 0 / 0.32), transparent 62%);
+}
+.light .app-backdrop {
+  background:
+    linear-gradient(to bottom, rgb(255 255 255 / 0.5), transparent 26%),
+    radial-gradient(44rem 30rem at 50% 118%, rgb(0 0 0 / 0.07), transparent 60%);
 }
 
 /* ---------- Motion ---------- */
@@ -243,24 +224,25 @@
   }
 }
 
-@keyframes plate-pulse {
-  0% {
-    transform: scale(0.55);
-    opacity: 0.65;
+/* Capture scanner: bright coral beam with a soft trail, sweeping downward. */
+@keyframes scan-sweep {
+  from {
+    transform: translateY(-115%);
   }
-  100% {
-    transform: scale(1.35);
-    opacity: 0;
+  to {
+    transform: translateY(430%);
   }
 }
 
-@keyframes breathe {
-  0%,
-  100% {
-    transform: scale(1);
+/* Status copy swap under the scanner: gentle rise + fade. */
+@keyframes status-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
-  50% {
-    transform: scale(1.06);
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -270,11 +252,11 @@
     opacity: 0;
     animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-  .animate-plate-pulse {
-    animation: plate-pulse 2.1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  .animate-scan-sweep {
+    animation: scan-sweep 1.8s linear infinite;
   }
-  .animate-breathe {
-    animation: breathe 2.4s ease-in-out infinite;
+  .animate-status-in {
+    animation: status-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 }
 

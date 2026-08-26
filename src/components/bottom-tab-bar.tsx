@@ -38,9 +38,9 @@ export function BottomTabBar() {
               aria-label="Log a meal"
               className={cn(
                 "absolute -top-[26px] flex size-14 items-center justify-center rounded-full",
-                "bg-primary text-primary-foreground shadow-lg shadow-primary/35",
+                "bg-primary text-primary-foreground shadow-[0_6px_20px_rgb(0_0_0/0.35)]",
                 "ring-4 ring-background transition-transform duration-150 ease-out",
-                "hover:brightness-[1.03] active:scale-90",
+                "hover:brightness-[1.05] active:scale-90",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                 "[&_svg]:size-7",
               )}

@@ -1,6 +1,5 @@
 "use client";
 
-import { useId } from "react";
 import { useEnterProgress } from "@/components/shared/use-enter-progress";
 import { formatKcal } from "@/components/shared/format";
 import { cn } from "@/lib/utils";
@@ -13,6 +12,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 /**
  * The hero of the Today screen: calories consumed vs. daily goal,
  * with the big confident number living in the center.
+ * One flat coral arc — no gradients, no glow; the number is the hero.
  */
 export function CalorieRing({
   consumed,
@@ -21,7 +21,6 @@ export function CalorieRing({
   consumed: number;
   goal: number;
 }) {
-  const gradientId = useId();
   const hasGoal = goal > 0;
   const rawRatio = hasGoal ? consumed / goal : 0;
   const ratio = useEnterProgress(rawRatio);
@@ -46,13 +45,6 @@ export function CalorieRing({
         className="size-full -rotate-90"
         aria-hidden="true"
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style={{ stopColor: "var(--primary)" }} />
-            <stop offset="100%" style={{ stopColor: "var(--carbs)" }} />
-          </linearGradient>
-        </defs>
-
         <circle
           cx={SIZE / 2}
           cy={SIZE / 2}
@@ -66,12 +58,14 @@ export function CalorieRing({
           cy={SIZE / 2}
           r={RADIUS}
           fill="none"
-          stroke={`url(#${gradientId})`}
           strokeWidth={STROKE}
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={offset}
-          className="transition-[stroke-dashoffset] duration-[1100ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+          className={cn(
+            "transition-[stroke-dashoffset] duration-[1100ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+            over ? "stroke-destructive" : "stroke-primary",
+          )}
         />
       </svg>
 

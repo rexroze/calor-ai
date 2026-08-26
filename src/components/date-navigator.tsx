@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import {
@@ -11,20 +12,24 @@ const NAV_BTN =
 
 /**
  * Yesterday | labeled day | tomorrow. The future past today is not
- * loggable, so "next" goes dark once you reach today.
+ * loggable, so "next" goes dark once you reach today. On today the center
+ * slot can be overridden (e.g. a personalized greeting) while both
+ * chevrons keep their places.
  */
 export function DateNavigator({
   dateISO,
   todayISO: today,
+  center,
 }: {
   dateISO: string;
   todayISO: string;
+  /** Replaces the day label — only honored on today (past days stay dates). */
+  center?: ReactNode;
 }) {
   const prev = addDaysISO(dateISO, -1);
   const next = addDaysISO(dateISO, 1);
   const isToday = dateISO === today;
   const canGoNext = !isToday;
-  const label = formatDayLabel(dateISO, today);
 
   return (
     <div className="flex w-full items-center">
@@ -33,13 +38,19 @@ export function DateNavigator({
       </Link>
 
       <div className="min-w-0 flex-1 text-center leading-tight">
-        <p className="font-display truncate text-lg font-semibold tracking-tight">
-          {label}
-        </p>
-        {!isToday && (
-          <p className="text-xs text-muted-foreground">
-            {formatFullDate(dateISO)}
-          </p>
+        {isToday && center ? (
+          center
+        ) : (
+          <>
+            <p className="font-display truncate text-lg font-semibold tracking-tight">
+              {formatDayLabel(dateISO, today)}
+            </p>
+            {!isToday && (
+              <p className="text-xs text-muted-foreground">
+                {formatFullDate(dateISO)}
+              </p>
+            )}
+          </>
         )}
       </div>
 

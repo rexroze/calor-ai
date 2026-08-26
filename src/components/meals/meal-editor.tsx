@@ -226,7 +226,7 @@ export function MealEditor({
 
       {/* Sticky action deck above the safe area. */}
       <footer className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-        <div className="rounded-2xl border bg-card/95 p-3.5 shadow-lg shadow-foreground/5 backdrop-blur">
+        <div className="rounded-2xl border bg-card/95 p-3.5 backdrop-blur">
           <div aria-live="polite">
             <DraftTotals drafts={drafts} />
           </div>

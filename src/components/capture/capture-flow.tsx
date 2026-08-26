@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { analyzePhoto, saveMeal, uploadMealPhoto } from "@/app/actions/meals";
+import { analyzePhoto, saveMeal } from "@/app/actions/meals";
 import { describeActionError } from "@/components/shared/action-errors";
 import {
   emptyDraftItem,
@@ -23,6 +23,7 @@ import {
 } from "@/components/shared/draft-items";
 import { base64FromDataUrl, downscaleToJpegDataUrl } from "@/components/capture/downscale-image";
 import { fmtNum } from "@/components/shared/format";
+import { usePrefersReducedMotion } from "@/components/shared/use-prefers-reduced-motion";
 import { DraftTotals } from "@/components/meals/draft-totals";
 import { ReviewItemRows } from "@/components/meals/review-item-rows";
 import { Button } from "@/components/ui/button";
@@ -44,12 +45,11 @@ import {
   isMealType,
 } from "@/components/shared/meal-types";
 
-/** Rotating copy for the analysis wait — keeps a ~2s call feeling alive. */
+/** Status copy under the scanner — one line every ~2.5s. */
 const PENDING_MESSAGES = [
-  "Reading the plate…",
-  "Spotting each item…",
+  "Reading your plate…",
+  "Spotting ingredients…",
   "Estimating portions…",
-  "Tallying the macros…",
 ];
 
 function analysisToDraft(item: FoodAnalysisItem): DraftItem {
@@ -71,6 +71,7 @@ function analysisToDraft(item: FoodAnalysisItem): DraftItem {
 export function CaptureFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const reducedMotion = usePrefersReducedMotion();
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -81,21 +82,23 @@ export function CaptureFlow() {
   const [drafts, setDrafts] = useState<DraftItem[]>([emptyDraftItem()]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState(PENDING_MESSAGES[0]);
+  const [messageIndex, setMessageIndex] = useState(0);
   const [mealType, setMealType] = useState<MealType>(() => {
     const requested = searchParams.get("type");
     return isMealType(requested) ? requested : inferMealType();
   });
 
+  // Cycle the status copy under the scanner. Reduced motion keeps a single
+  // steady line instead of a rotating one.
   useEffect(() => {
-    if (phase !== "analyzing") return;
+    if (phase !== "analyzing" || reducedMotion) return;
     let i = 0;
     const id = setInterval(() => {
       i += 1;
-      setPendingMessage(PENDING_MESSAGES[i % PENDING_MESSAGES.length]);
-    }, 1600);
+      setMessageIndex(i % PENDING_MESSAGES.length);
+    }, 2500);
     return () => clearInterval(id);
-  }, [phase]);
+  }, [phase, reducedMotion]);
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -112,15 +115,17 @@ export function CaptureFlow() {
       return;
     }
 
+    // The photo goes up immediately so the scanner has something real to
+    // sweep over while the model works.
+    setPhotoPreview(preview);
+
     try {
       const analysis = await analyzePhoto(base64FromDataUrl(preview));
-      setPhotoPreview(preview);
       setDrafts(analysis.items.map(analysisToDraft));
       setAnalysisFailed(false);
     } catch (error) {
       // The photo itself was fine if it downscaled — let the user log by hand
       // instead of losing the moment to a flaky model call.
-      setPhotoPreview(preview);
       setDrafts([emptyDraftItem()]);
       setAnalysisFailed(true);
       toast.error(describeActionError(error));
@@ -147,23 +152,9 @@ export function CaptureFlow() {
 
     setSaving(true);
     try {
-      // Persist the analyzed photo first so saveMeal can store its URL in one
-      // write. Upload trouble must never block logging the meal — a null URL
-      // simply saves a photoless entry.
-      let photoUrl: string | undefined;
-      if (photoPreview) {
-        try {
-          const uploaded = await uploadMealPhoto(base64FromDataUrl(photoPreview));
-          photoUrl = uploaded.photoUrl ?? undefined;
-        } catch {
-          photoUrl = undefined;
-        }
-      }
-
       await saveMeal({
         mealType,
         note: note.trim() || undefined,
-        ...(photoUrl !== undefined ? { photoUrl } : {}),
         items,
       });
       toast.success("Meal logged");
@@ -207,64 +198,32 @@ export function CaptureFlow() {
       />
 
       <main className="mx-auto w-full max-w-md px-4 pt-safe pb-52" aria-busy={busy}>
-        {phase !== "review" ? (
-          <section
-            className="reveal rounded-3xl border bg-card p-6 shadow-sm"
-            style={{ animationDelay: "0ms" }}
-          >
-            <PlateVisual analyzing={phase === "analyzing"} />
+        {phase === "pick" && (
+          <PickCard
+            disabled={busy}
+            onCamera={() => cameraInputRef.current?.click()}
+            onGallery={() => galleryInputRef.current?.click()}
+          />
+        )}
 
-            {phase === "pick" ? (
-              <div className="mt-6 space-y-5">
-                <div className="space-y-1.5 text-center">
-                  <h2 className="font-display text-xl font-semibold tracking-tight">
-                    Snap your plate
-                  </h2>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    One clear photo is all calorAI needs to estimate calories
-                    and macros.
-                  </p>
-                </div>
-
-                <div className="space-y-2.5">
-                  <Button
-                    type="button"
-                    size="lg"
-                    className="h-11 w-full text-base"
-                    onClick={() => cameraInputRef.current?.click()}
-                    disabled={busy}
-                  >
-                    <CameraIcon aria-hidden="true" />
-                    Take photo
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="lg"
-                    className="h-11 w-full text-base"
-                    onClick={() => galleryInputRef.current?.click()}
-                    disabled={busy}
-                  >
-                    <ImagePlusIcon aria-hidden="true" />
-                    Choose from library
-                  </Button>
-                </div>
-
-                <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                  Photos are analyzed to estimate nutrition and are kept only in
-                  your own diary.
-                </p>
-              </div>
-            ) : (
-              <div role="status" aria-live="polite" className="mt-6 space-y-3 text-center">
-                <p className="text-base font-medium">{pendingMessage}</p>
-                <p className="text-xs text-muted-foreground">
-                  Usually takes a couple of seconds.
-                </p>
-              </div>
-            )}
+        {phase === "analyzing" && (
+          <section aria-label="Analyzing your photo" className="reveal space-y-5">
+            <ScannerFrame preview={photoPreview} reducedMotion={reducedMotion} />
+            <div role="status" aria-live="polite" className="min-h-12 space-y-1 text-center">
+              <p
+                key={messageIndex}
+                className={`text-base font-medium ${reducedMotion ? "" : "animate-status-in"}`}
+              >
+                {PENDING_MESSAGES[messageIndex]}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Usually takes a couple of seconds.
+              </p>
+            </div>
           </section>
-        ) : (
+        )}
+
+        {phase === "review" && (
           <div className="space-y-5">
             <section className="reveal flex items-center gap-3" style={{ animationDelay: "0ms" }}>
               {photoPreview && (
@@ -297,7 +256,7 @@ export function CaptureFlow() {
             </section>
 
             {analysisFailed && (
-              <p className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2.5 text-xs leading-relaxed text-destructive">
+              <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs leading-relaxed text-destructive">
                 <CircleAlertIcon className="mt-px size-4 shrink-0" aria-hidden="true" />
                 The automatic estimate didn&apos;t come through. Enter the foods
                 below by hand — everything else still works.
@@ -379,7 +338,7 @@ export function CaptureFlow() {
 
       {phase === "review" && (
         <footer className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-          <div className="rounded-2xl border bg-card/95 p-3.5 shadow-lg shadow-foreground/5 backdrop-blur">
+          <div className="rounded-2xl border bg-card/95 p-3.5 backdrop-blur">
             <DraftTotals drafts={drafts} />
             <Separator className="my-3" />
             <Button
@@ -405,30 +364,122 @@ export function CaptureFlow() {
   );
 }
 
-/** Decorative plate with breathing flame and radar pulses while analyzing. */
-function PlateVisual({ analyzing }: { analyzing: boolean }) {
+/** Idle entry: quiet plate mark, camera first, gallery second. */
+function PickCard({
+  disabled,
+  onCamera,
+  onGallery,
+}: {
+  disabled: boolean;
+  onCamera: () => void;
+  onGallery: () => void;
+}) {
   return (
-    <div className="relative mx-auto grid size-28 place-items-center">
-      {analyzing && (
-        <>
-          <span
-            aria-hidden="true"
-            className="animate-plate-pulse absolute inset-0 rounded-full border border-primary/40"
-          />
-          <span
-            aria-hidden="true"
-            className="animate-plate-pulse absolute inset-0 rounded-full border border-primary/25"
-            style={{ animationDelay: "0.7s" }}
-          />
-        </>
-      )}
-      <div className="grid size-20 place-items-center rounded-full bg-primary/10 ring-1 ring-primary/20">
+    <section
+      className="reveal rounded-3xl border bg-card p-6"
+      style={{ animationDelay: "0ms" }}
+    >
+      <div className="relative mx-auto grid size-28 place-items-center">
+        <span aria-hidden="true" className="absolute inset-0 rounded-full ring-1 ring-border" />
+        <span aria-hidden="true" className="absolute inset-3 rounded-full bg-accent/60" />
         <FlameIcon
           aria-hidden="true"
-          className={`size-9 text-primary ${analyzing ? "animate-breathe" : ""}`}
+          className="size-9 text-primary"
           strokeWidth={1.8}
         />
       </div>
+
+      <div className="mt-6 space-y-5">
+        <div className="space-y-1.5 text-center">
+          <h2 className="font-display text-xl font-semibold tracking-tight">
+            Snap your plate
+          </h2>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            One clear photo is all calorAI needs to estimate calories and
+            macros.
+          </p>
+        </div>
+
+        <div className="space-y-2.5">
+          <Button
+            type="button"
+            size="lg"
+            className="h-11 w-full text-base"
+            onClick={onCamera}
+            disabled={disabled}
+          >
+            <CameraIcon aria-hidden="true" />
+            Take photo
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="h-11 w-full text-base"
+            onClick={onGallery}
+            disabled={disabled}
+          >
+            <ImagePlusIcon aria-hidden="true" />
+            Choose from library
+          </Button>
+        </div>
+
+        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+          Photos are analyzed to estimate nutrition and are kept only in your
+          own diary.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Cal-AI-style scanning frame: the photo stays visible under a light dim,
+ * a coral beam sweeps downward on loop, contained by the photo's radius.
+ */
+function ScannerFrame({
+  preview,
+  reducedMotion,
+}: {
+  preview: string | null;
+  reducedMotion: boolean;
+}) {
+  return (
+    <div className="relative aspect-[4/3] overflow-hidden rounded-3xl ring-1 ring-border">
+      {preview ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={preview}
+          alt="Your meal photo being analyzed"
+          className="size-full object-cover"
+        />
+      ) : (
+        <div className="size-full bg-card" aria-hidden="true" />
+      )}
+
+      {/* Reading dim — keeps the food visible, mutes it for the beam. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-black/45" />
+
+      {!reducedMotion && (
+        <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
+          <div
+            className="animate-scan-sweep absolute inset-x-0 top-0 h-[26%]"
+            style={{
+              background:
+                "linear-gradient(to bottom, transparent, color-mix(in oklab, var(--primary) 14%) 48%, color-mix(in oklab, var(--primary) 36%) 82%, var(--primary))",
+            }}
+          >
+            {/* Bright leading edge — crisp, never glowing. */}
+            <span
+              className="absolute inset-x-0 bottom-0 h-[2px]"
+              style={{
+                background:
+                  "color-mix(in oklab, var(--primary) 55%, white)",
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

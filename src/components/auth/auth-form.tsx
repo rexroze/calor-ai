@@ -82,7 +82,7 @@ export function AuthForm({
   }
 
   return (
-    <Card className="reveal w-full max-w-sm gap-6 rounded-3xl border bg-card/95 py-8 shadow-xl shadow-primary/10 backdrop-blur">
+    <Card className="reveal w-full max-w-sm gap-6 rounded-3xl border bg-card py-8">
       <CardContent className="space-y-6 px-6">
         <div className="flex flex-col items-center gap-4 text-center">
           <BrandMark size="lg" />

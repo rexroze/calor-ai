@@ -6,6 +6,7 @@ import { getGoals } from "@/app/actions/goals";
 import { getDay } from "@/app/actions/meals";
 import { CalorieRing } from "@/components/calorie-ring";
 import { DateNavigator } from "@/components/date-navigator";
+import { Greeting } from "@/components/shared/greeting";
 import { MacroBars } from "@/components/macro-bars";
 import { TopBar } from "@/components/top-bar";
 import { DayEmptyState } from "@/components/meals/day-empty-state";
@@ -46,7 +47,11 @@ export default async function TodayPage({
   return (
     <>
       <TopBar>
-        <DateNavigator dateISO={dateISO} todayISO={today} />
+        <DateNavigator
+          dateISO={dateISO}
+          todayISO={today}
+          center={dateISO === today ? <Greeting /> : undefined}
+        />
       </TopBar>
 
       <main className="mx-auto w-full max-w-md px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+6.5rem)]">

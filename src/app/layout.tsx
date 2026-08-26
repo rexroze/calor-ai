@@ -1,24 +1,31 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Fraunces } from "next/font/google";
+import { Bricolage_Grotesque, DM_Sans } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/register-sw";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/* Body/UI voice: humanist, warm, proven at small sizes in health apps. */
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+/* Display voice: distinctive grotesk for wordmark moments and big numerals.
+   Tabular figures keep counters rock-steady (see .tnum in globals.css). */
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
+  display: "swap",
 });
 
-/* Warm, food-editorial display face for the wordmark and page titles. */
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-});
+/**
+ * Theme bootstrap — must run before first paint so the chosen appearance
+ * (localStorage "calorai-theme": "dark" | "light" | "system") lands without
+ * a flash. Dark is the default state of :root; `.light` on <html> flips it,
+ * so we only ever ADD the light class when the resolved theme is light.
+ */
+const THEME_INIT = `(function(){try{var t=localStorage.getItem("calorai-theme");var dark=t==="dark"||((!t||t==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(!dark){document.documentElement.classList.add("light")}}catch(e){}})();`;
 
 export const metadata: Metadata = {
   applicationName: "calorAI",
@@ -52,8 +59,8 @@ export const viewport: Viewport = {
   /* The keyboard pushes content up instead of covering the capture form. */
   interactiveWidget: "resizes-content",
   themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#17130f" },
     { media: "(prefers-color-scheme: light)", color: "#fbf7ef" },
-    { media: "(prefers-color-scheme: dark)", color: "#1b1412" },
   ],
 };
 
@@ -62,8 +69,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${dmSans.variable} ${bricolage.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+      </head>
       <body className="min-h-dvh">
         {children}
         <ServiceWorkerRegister />

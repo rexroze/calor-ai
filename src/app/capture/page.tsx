@@ -4,8 +4,8 @@ import Link from "next/link";
 import { ArrowLeftIcon } from "lucide-react";
 
 import { CaptureFlow } from "@/components/capture/capture-flow";
+import { CaptureSkeleton } from "@/components/capture/capture-skeleton";
 import { TopBar } from "@/components/top-bar";
-import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = {
   title: "Log a meal",
@@ -46,21 +46,5 @@ function BackLink() {
     >
       <ArrowLeftIcon className="size-5" aria-hidden="true" />
     </Link>
-  );
-}
-
-function CaptureSkeleton() {
-  return (
-    <main className="mx-auto w-full max-w-md px-4 pt-safe pb-52">
-      <div className="rounded-3xl border bg-card p-6 shadow-sm">
-        <Skeleton className="mx-auto size-28 rounded-full" />
-        <div className="mt-6 space-y-3">
-          <Skeleton className="mx-auto h-6 w-40" />
-          <Skeleton className="mx-auto h-4 w-full max-w-[16rem]" />
-          <Skeleton className="h-11 w-full rounded-lg" />
-          <Skeleton className="h-11 w-full rounded-lg" />
-        </div>
-      </div>
-    </main>
   );
 }
