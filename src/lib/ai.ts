@@ -131,6 +131,13 @@ function normalizeAnalysis(analysis: FoodAnalysis): FoodAnalysis {
     fatG: roundToNearest5(analysis.fatG),
     confidence: scoreToConfidenceLabel(analysis.confidence),
   };
+
+  // Guard: if AI identified food but produced zeroed nutrition, reject the
+  // analysis — silently saving 0-calorie meals would corrupt the diary.
+  if (item.calories === 0 && item.proteinG === 0 && item.carbsG === 0 && item.fatG === 0) {
+    throw new Error("AI_ANALYSIS_FAILED");
+  }
+
   return { ...analysis, items: [item] };
 }
 

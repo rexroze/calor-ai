@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { BellIcon, BellOffIcon, InfoIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -59,12 +58,11 @@ function saveTimes(times: MealTimes) {
   }
 }
 
-/** Convert "HH:MM" to a display string like "8:00 AM". */
-function formatTime(value: string): string {
-  const [h, m] = value.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const hour = h % 12 || 12;
-  return `${hour}:${String(m).padStart(2, "0")} ${ampm}`;
+function detectPermission(): PermissionState {
+  if (typeof window === "undefined") return "not-supported";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window))
+    return "not-supported";
+  return Notification.permission === "denied" ? "denied" : "supported";
 }
 
 function isIOSSafari(): boolean {
@@ -99,30 +97,24 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
  * ------------------------------------------------------------------------ */
 
 export function RemindersCard() {
-  const [permission, setPermission] = useState<PermissionState>("not-supported");
+  const [permission] = useState<PermissionState>(() => detectPermission());
   const [enabled, setEnabled] = useState(false);
-  const [times, setTimes] = useState<MealTimes>(DEFAULT_TIMES);
+  const [times, setTimes] = useState<MealTimes>(() => loadTimes());
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // --- Detect support + existing subscription on mount ---
+  // --- Detect existing subscription on mount (async) ---
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setPermission("not-supported");
-      return;
-    }
-    setPermission(Notification.permission === "denied" ? "denied" : "supported");
-    setTimes(loadTimes());
-
-    // Check if we already have an active subscription
-    navigator.serviceWorker.ready.then((reg) => {
-      reg.pushManager.getSubscription().then((sub) => {
-        if (sub) {
-          setSubscription(sub);
-          setEnabled(true);
-        }
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
+          if (sub) {
+            setSubscription(sub);
+            setEnabled(true);
+          }
+        });
       });
-    });
+    }
   }, []);
 
   // --- Time change handler ---
@@ -199,7 +191,6 @@ export function RemindersCard() {
 
       setSubscription(sub);
       setEnabled(true);
-      setPermission("supported");
       toast.success("Reminders enabled!");
     } catch (error) {
       console.error("[RemindersCard] enable failed:", error);
