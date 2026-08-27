@@ -618,7 +618,14 @@ function WizardActions({
   saving: boolean;
 }) {
   return (
-    <div className="grid grid-cols-[auto_1fr] gap-2.5 pt-1">
+    <div
+      className={cn(
+        "gap-2.5 pt-1",
+        showBack
+          ? "grid grid-cols-[auto_1fr]"
+          : "flex justify-center",
+      )}
+    >
       {showBack ? (
         <Button
           type="button"

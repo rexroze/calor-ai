@@ -96,7 +96,7 @@ function SegmentedRadio({
     <div
       role="radiogroup"
       aria-label={name}
-      className="grid w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-4"
+      className="flex w-full justify-center gap-1 rounded-xl bg-muted p-1"
     >
       {options.map((opt) => {
         const active = value === opt.value;
@@ -109,7 +109,7 @@ function SegmentedRadio({
             disabled={disabled}
             onClick={() => onChange(opt.value)}
             className={cn(
-              "flex h-9 min-h-11 items-center justify-center rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150",
+              "flex h-11 flex-1 items-center justify-center rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
               active
                 ? "bg-card text-foreground ring-1 ring-border"
